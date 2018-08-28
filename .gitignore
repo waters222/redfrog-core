@@ -16,6 +16,18 @@ docker/dev/db/*
 dist/
 pkg/
 vendor
+
+### Ansible ###
+*.retry
+
+### Vagrant ###
+# General
+.vagrant/
+
+# Log files (if you are creating logs in debug mode, uncomment this)
+# *.logs
+
+
 ### Go ###
 # Binaries for programs and plugins
 *.exe
