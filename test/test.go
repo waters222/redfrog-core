@@ -42,6 +42,7 @@ func main(){
 	var mode string
 	var addr string
 	var msg 	string
+	var repeatTime int
 	var err error
 
 	// parse parameters
@@ -50,6 +51,7 @@ func main(){
 	flag.StringVar(&mode, "m", "", "mode: client/server")
 	flag.StringVar(&addr, "addr", "", "addr")
 	flag.StringVar(&msg, "msg", "hello world", "send msg")
+	flag.IntVar(&repeatTime, "r", 0, "repeat time in second")
 	flag.StringVar(&logLevel, "l", "info", "log level")
 	flag.Parse()
 
@@ -68,13 +70,20 @@ func main(){
 
 	var tcpListen net.Listener
 	var udpListen *net.UDPConn
+
+	var ticker *time.Ticker
 	if mode == "client" {
-		logger.Info("Running as client mode", zap.String("addr", addr))
-		if err = writeTcp(addr, msg); err != nil{
-			logger.Error("TCP write failed", zap.String("error", err.Error()))
-		}
-		if err = writeUdp(addr, msg); err != nil{
-			logger.Error("UDP write failed", zap.String("error", err.Error()))
+		if repeatTime > 0{
+			ticker = time.NewTicker(time.Second * time.Duration(repeatTime))
+			logger.Info("Running client repeat mode", zap.Int("seconds", repeatTime))
+			go func(){
+				for  range ticker.C{
+					runClient(addr, msg)
+				}
+			}()
+		}else{
+			runClient(addr, msg)
+			return
 		}
 
 	}else if mode == "server"{
@@ -107,8 +116,23 @@ func main(){
 		logger.Debug("RedFrog caught signal for exit",
 			zap.Any("signal", sig))
 		done <- true
+
+		if ticker != nil{
+			ticker.Stop()
+		}
 	}()
 	<-done
+}
+func runClient(addr string, msg string){
+	logger := log.GetLogger()
+	var err error
+	logger.Info("Running as client mode", zap.String("addr", addr))
+	if err = writeTcp(addr, msg); err != nil{
+		logger.Error("TCP write failed", zap.String("error", err.Error()))
+	}
+	if err = writeUdp(addr, msg); err != nil{
+		logger.Error("UDP write failed", zap.String("error", err.Error()))
+	}
 }
 func writeTcp(addr string, msg string) (err error){
 	logger := log.GetLogger()
