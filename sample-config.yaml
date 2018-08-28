@@ -1,0 +1,31 @@
+dns:
+  listen-addr: "127.0.0.1:5300"
+  local-resolver:
+    - "114.114.114.114"
+  proxy-resolver:
+    - "8.8.4.4"
+shadowsocks:
+  listen-addr: "127.0.0.1:909"
+  udp-timeout: 120
+  pac-list:
+    - "gfw-list.txt"
+    - "gfw-list.txt"
+  servers:
+    - remote-server: "146.71.79.80:8445"
+      crypt: "AEAD_CHACHA20_POLY1305"
+      key: "123321A"
+      kcptun:
+        remote-server: "146.71.79.80:8446"
+        key: "JumpJumpJump!!!"
+        crypt: "salsa20"
+        mode: "fast"
+        conn: 1
+        autoexpire: 0
+        mtu: 1350
+        sndwnd: 128
+        rcvwnd: 512
+        datashard: 10
+        parityshard: 3
+        dscp: 0
+        nocomp: false
+
