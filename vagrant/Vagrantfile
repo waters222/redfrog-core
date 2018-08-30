@@ -12,7 +12,7 @@ Vagrant.configure("2") do |config|
 
   # Every Vagrant development environment requires a box. You can search for
   # boxes at https://vagrantcloud.com/search.
-  config.vm.box = "ubuntu/bionic64"
+  # config.vm.box = "ubuntu/bionic64"
 
   # Disable automatic box update checking. If you disable this, then
   # boxes will only be checked for updates when the user runs
@@ -67,23 +67,40 @@ Vagrant.configure("2") do |config|
   #   apt-get update
   #   apt-get install -y apache2
   # SHELL
-  config.vm.network "public_network", ip: "10.0.0.50"
-
-  # default router
-  config.vm.provision "shell",
-    run: "always",
-    inline: "route add default gw 10.0.0.1"
-
-  # default router ipv6
-  #config.vm.provision "shell",
-  #  run: "always",
-  #  inline: "route -A inet6 add default gw fc00::1 eth1"
-
-  # delete default gw on eth0
-  config.vm.provision "shell",
-    run: "always",
-    inline: "eval `route -n | awk '{ if ($8 ==\"eth0\" && $2 != \"0.0.0.0\") print \"route del default gw \" $2; }'`"
-
-  # folder
-  config.vm.synced_folder "/home/zhoumingjun/go/", "/home/vagrant/map"
+  # config.vm.box = "ubuntu/bionic64"
+  # config.vm.hostname = "gateway"
+  # config.vm.network "private_network", ip: "10.0.2.20"
+  # gateway.vm.network "public_network", ip: "10.0.0.52"
+  # gateway.vm.provision "shell",
+  #   run: "always",
+  #   inline: "route add default gw 10.0.0.1"
+  # gateway.vm.provision "shell",
+  #   run: "always",
+  #   inline: "eval `route -n | awk '{ if ($8 ==\"eth0\" && $2 != \"0.0.0.0\") print \"route del default gw \" $2; }'`"
+  # config.vm.synced_folder "../../../../../", "/home/vagrant/map"
+  config.vm.define "gateway" do |gateway|
+    gateway.vm.box = "ubuntu/bionic64"
+    gateway.vm.hostname = "gateway"
+    gateway.vm.network "private_network", ip: "192.168.0.1"
+    # gateway.vm.network "public_network", ip: "10.0.0.52"
+    # gateway.vm.provision "shell",
+    #   run: "always",
+    #   inline: "route add default gw 10.0.0.1"
+    # gateway.vm.provision "shell",
+    #   run: "always",
+    #   inline: "eval `route -n | awk '{ if ($8 ==\"eth0\" && $2 != \"0.0.0.0\") print \"route del default gw \" $2; }'`"
+    gateway.vm.synced_folder "../../../../../", "/home/vagrant/map"
+  end
+  config.vm.define "client" do |client|
+    client.vm.box = "ubuntu/bionic64"
+    client.vm.hostname = "client"
+    client.vm.network "private_network", ip: "192.168.0.10"
+    # client.vm.provision "shell",
+    #   run: "always",
+    #   inline: "route add default gw 10.0.2.20"
+    # client.vm.provision "shell",
+    #   run: "always",
+    #   inline: "eval `route -n | awk '{ if ($8 ==\"eth0\" && $2 != \"0.0.0.0\") print \"route del default gw \" $2; }'`"
+    client.vm.synced_folder "../../../../../", "/home/vagrant/map"
+  end
 end

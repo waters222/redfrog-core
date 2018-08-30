@@ -1,3 +1,4 @@
 #!/bin/bash
 cp Vagrantfile_weishi Vagrantfile
-vagrant up
+vagrant up gateway
+vagrant up client

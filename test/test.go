@@ -10,13 +10,19 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
 
 const (
-	CONN_DEADLINE = 5
+	SOL_IP = 0
+	IP_TRANSPARENT = 19
 )
+
+var CONN_DEADLINE int
+
 
 var Version string
 var BuildTime string
@@ -52,6 +58,7 @@ func main(){
 	flag.StringVar(&addr, "addr", "", "addr")
 	flag.StringVar(&msg, "msg", "hello world", "send msg")
 	flag.IntVar(&repeatTime, "r", 0, "repeat time in second")
+	flag.IntVar(&CONN_DEADLINE, "timeout", 10, "timeout")
 	flag.StringVar(&logLevel, "l", "info", "log level")
 	flag.Parse()
 
@@ -70,12 +77,13 @@ func main(){
 
 	var tcpListen net.Listener
 	var udpListen *net.UDPConn
+	var tcpRawFile int
 
 	var ticker *time.Ticker
 	if mode == "client" {
 		if repeatTime > 0{
 			ticker = time.NewTicker(time.Second * time.Duration(repeatTime))
-			logger.Info("Running client repeat mode", zap.Int("seconds", repeatTime))
+			logger.Info("Running client repeat mode", zap.Int("seconds", repeatTime), zap.Int("timeout", CONN_DEADLINE))
 			go func(){
 				for  range ticker.C{
 					runClient(addr, msg)
@@ -87,8 +95,8 @@ func main(){
 		}
 
 	}else if mode == "server"{
-		logger.Info("Running as server mode", zap.String("addr", addr))
-		if tcpListen, err = listenTcp(addr); err != nil{
+		logger.Info("Running as server mode", zap.String("addr", addr), zap.Int("timeout", CONN_DEADLINE))
+		if tcpListen, tcpRawFile, err = listenTcp(addr); err != nil{
 			return
 		}
 		if udpListen, err = listenUdp(addr); err != nil{
@@ -100,7 +108,12 @@ func main(){
 		return
 	}
 	defer func(){
+
 		tcpListen.Close()
+		if tcpRawFile !=  0{
+			syscall.Close(tcpRawFile)
+		}
+
 		logger.Info("TCP listen closed")
 		udpListen.Close()
 		logger.Info("UDP listen closed")
@@ -138,11 +151,12 @@ func writeTcp(addr string, msg string) (err error){
 	logger := log.GetLogger()
 
 	var conn net.Conn
-	if conn, err = net.Dial("tcp", addr); err != nil{
+	dial := net.Dialer{Timeout: time.Second * time.Duration(CONN_DEADLINE)}
+	if conn, err = dial.Dial("tcp", addr); err != nil{
 		return
 	}
 	defer conn.Close()
-	if err = conn.SetDeadline(time.Now().Add(time.Second * CONN_DEADLINE)); err != nil{
+	if err = conn.SetDeadline(time.Now().Add(time.Second * time.Duration(CONN_DEADLINE))); err != nil{
 		return
 	}
 
@@ -177,14 +191,13 @@ func writeUdp(addr string, msg string) (err error){
 	if udpAddr, err = net.ResolveUDPAddr("udp", addr); err != nil{
 		return
 	}
-
 	var conn *net.UDPConn
 	if conn, err = net.DialUDP("udp", nil, udpAddr); err != nil{
 		return
 	}
 	defer conn.Close()
 	//
-	if err = conn.SetDeadline(time.Now().Add(time.Second * CONN_DEADLINE)); err != nil{
+	if err = conn.SetDeadline(time.Now().Add(time.Second * time.Duration(CONN_DEADLINE))); err != nil{
 		return
 	}
 
@@ -209,11 +222,54 @@ func writeUdp(addr string, msg string) (err error){
 }
 
 
-func listenTcp(addr string) (ln net.Listener, err error){
+func listenTcp(addr string) (ln net.Listener, rawSocket int,  err error){
 	logger := log.GetLogger()
-	if ln, err = net.Listen("tcp", addr); err != nil{
+	slugs := strings.Split(addr, ":")
+	if len(slugs) != 2 {
+		err = errors.New(fmt.Sprintf("Invalid addr format: %s", addr))
 		return
 	}
+	var ip [4]byte
+	if ipTemp := net.ParseIP(slugs[0]); ipTemp == nil{
+		err = errors.New(fmt.Sprintf("Invalid IP address: %s", slugs[0]))
+		return
+	}else{
+		ipTemp = ipTemp.To4()
+		ip = [4]byte{ipTemp[0], ipTemp[1], ipTemp[2], ipTemp[3]}
+	}
+
+	var port int64
+	if port, err = strconv.ParseInt(slugs[1], 10, 32); err != nil{
+		err = errors.New(fmt.Sprintf("Port format invalid: %s", slugs[1]))
+		return
+	}
+
+
+	if rawSocket, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, syscall.IPPROTO_TCP); err != nil{
+		err = errors.Wrap(err, "Open raw socket for stream for tcp failed")
+		return
+	}
+	if err = syscall.SetsockoptInt(rawSocket, SOL_IP, IP_TRANSPARENT, 1); err != nil{
+		err = errors.Wrap(err, "Set raw socket opt failed")
+		syscall.Close(rawSocket)
+		rawSocket = 0
+		return
+	}
+	socketAddr := syscall.SockaddrInet4{Port: int(port), Addr: ip}
+	if err = syscall.Bind(rawSocket, &socketAddr); err != nil{
+		syscall.Close(rawSocket)
+		rawSocket = 0
+		err = errors.Wrap(err, "Bind socket failed")
+		return
+	}
+
+	syscall.Listen(rawSocket, syscall.SOMAXCONN)
+	if ln, err = net.FileListener(os.NewFile(uintptr(rawSocket), "listenTCP")); err != nil{
+		syscall.Close(rawSocket)
+		rawSocket = 0
+		return
+	}
+
 	go func(){
 		logger.Info("Listen TCP successful", zap.String("addr", addr))
 		for{
@@ -231,11 +287,10 @@ func listenTcp(addr string) (ln net.Listener, err error){
 
 func handleTcpConn(conn net.Conn){
 	logger := log.GetLogger()
-
 	defer conn.Close()
 
 
-	if err := conn.SetDeadline(time.Now().Add(time.Second * CONN_DEADLINE)); err != nil{
+	if err := conn.SetDeadline(time.Now().Add(time.Second * time.Duration(CONN_DEADLINE))); err != nil{
 		logger.Error("Set tcp conn deadline failed", zap.String("error", err.Error()))
 		return
 	}
