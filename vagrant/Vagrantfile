@@ -81,7 +81,8 @@ Vagrant.configure("2") do |config|
   config.vm.define "gateway" do |gateway|
     gateway.vm.box = "ubuntu/bionic64"
     gateway.vm.hostname = "gateway"
-    gateway.vm.network "private_network", ip: "192.168.0.1"
+    gateway.vm.network "private_network", ip: "192.168.0.1",
+      virtualbox__intnet: "mynet"
     # gateway.vm.network "public_network", ip: "10.0.0.52"
     # gateway.vm.provision "shell",
     #   run: "always",
@@ -94,10 +95,11 @@ Vagrant.configure("2") do |config|
   config.vm.define "client" do |client|
     client.vm.box = "ubuntu/bionic64"
     client.vm.hostname = "client"
-    client.vm.network "private_network", ip: "192.168.0.10"
+    client.vm.network "private_network", ip: "192.168.0.10",
+      virtualbox__intnet: "mynet"
     # client.vm.provision "shell",
     #   run: "always",
-    #   inline: "route add default gw 10.0.2.20"
+    #   inline: "route add default gw 192.168.0.1"
     # client.vm.provision "shell",
     #   run: "always",
     #   inline: "eval `route -n | awk '{ if ($8 ==\"eth0\" && $2 != \"0.0.0.0\") print \"route del default gw \" $2; }'`"

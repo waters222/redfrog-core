@@ -32,22 +32,25 @@ sudo ip route del default via 192.168.0.1
 
 ```bash
 
-sudo echo 1 > /proc/sys/net/ipv4/ip_forward
+#chagne from 0 to 1
+sudo nano /proc/sys/net/ipv4/ip_forward
+
 sudo nano /etc/sysctl.conf
 #remove for net.ipv4.ip_forward-1
 sudo sysctl -p /etc/sysctl.conf 
-
-sudo ip link set enp0s8 promisc on
 
 sudo iptables --flush
 sudo iptables -t nat --flush
 sudo iptables --delete-chain
 
-
+# accept incoming connection if local initialed
 sudo iptables -A INPUT -i enp0s3 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
+## forward from enp0s8 to enp0s3
 sudo iptables -A FORWARD -i enp0s8 -o enp0s3 -j ACCEPT
+# forward from enp0s3 to enp0s8 if enp0s8 initialed the conn
 sudo iptables -A FORWARD -i enp0s3 -o enp0s8 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+## MASQUERADE all connection for post routing
 sudo iptables -t nat -A POSTROUTING -o enp0s3 -j MASQUERADE
 
 ```
