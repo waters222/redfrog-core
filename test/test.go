@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/weishi258/redfrog-core/log"
+	"github.com/weishi258/redfrog-core/network"
 	"go.uber.org/zap"
 	"math/rand"
 	"net"
@@ -16,10 +17,10 @@ import (
 	"time"
 )
 
-const (
-	SOL_IP = 0
-	IP_TRANSPARENT = 19
-)
+//const (
+//	SOL_IP = 0
+//	IP_TRANSPARENT = 19
+//)
 
 var CONN_DEADLINE int
 
@@ -77,33 +78,6 @@ func main(){
 
 	var tcpListen net.Listener
 	var udpListen *net.UDPConn
-	var tcpRawFile int
-	var udpRawFile int
-
-	defer func(){
-
-		if tcpRawFile !=  0{
-			tcpListen.Close()
-			if err = syscall.Close(tcpRawFile); err != nil{
-				logger.Error("Close tcp raw file failed", zap.String("error", err.Error()))
-			}
-			tcpRawFile = 0
-		}
-		logger.Info("TCP listen closed")
-
-
-
-		if udpRawFile != 0 {
-			udpListen.Close()
-			if err = syscall.Close(udpRawFile); err != nil{
-				logger.Error("Close udp raw file failed", zap.String("error", err.Error()))
-			}
-			udpRawFile = 0
-		}
-		logger.Info("UDP listen closed")
-
-		os.Exit(1)
-	}()
 
 	var ticker *time.Ticker
 	if mode == "client" {
@@ -122,20 +96,30 @@ func main(){
 
 	}else if mode == "server"{
 		logger.Info("Running as server mode", zap.String("addr", addr), zap.Int("timeout", CONN_DEADLINE))
-		if tcpListen, tcpRawFile, err = listenTcp(addr); err != nil{
+		if tcpListen, err = listenTcp(addr); err != nil{
 			logger.Error("Listen TCP failed", zap.String("error", err.Error()))
 			return
 		}
-		if udpListen, udpRawFile, err = listenUdp(addr); err != nil{
+		logger.Info("TCP listen successful")
+		defer func() {
+			tcpListen.Close()
+			logger.Info("TCP listen closed")
+		}()
+		if udpListen, err = listenUdp(addr); err != nil{
 			logger.Error("Listen UDP failed", zap.String("error", err.Error()))
 			return
 		}
+
+		logger.Info("UDP listen successful")
+		defer func() {
+			udpListen.Close()
+			logger.Info("TCP listen closed")
+		}()
 
 	}else{
 		err = errors.New(fmt.Sprintf("Unknow mode type: %s", mode))
 		return
 	}
-
 
 
 
@@ -264,13 +248,12 @@ func bindSocketTCP(addr string) (ln net.Listener, rawSocket int, err error){
 		return
 	}
 
-
 	if rawSocket, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, syscall.IPPROTO_TCP); err != nil{
 		err = errors.Wrap(err, "Open raw socket for stream for tcp failed")
 		return
 	}
 
-	if err = syscall.SetsockoptInt(rawSocket, SOL_IP, IP_TRANSPARENT, 1); err != nil{
+	if err = syscall.SetsockoptInt(rawSocket, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil{
 		err = errors.Wrap(err, "Set raw socket opt failed")
 		syscall.Close(rawSocket)
 		rawSocket = 0
@@ -284,6 +267,8 @@ func bindSocketTCP(addr string) (ln net.Listener, rawSocket int, err error){
 		return
 	}
 	syscall.Listen(rawSocket, syscall.SOMAXCONN)
+	aa := os.NewFile(uintptr(rawSocket), "listenTCP")
+	aa.Fd()
 	if ln, err = net.FileListener(os.NewFile(uintptr(rawSocket), "listenTCP")); err != nil{
 		syscall.Close(rawSocket)
 		rawSocket = 0
@@ -317,7 +302,13 @@ func bindSocketUDP(addr string) (ln *net.UDPConn, rawSocket int, err error){
 		return
 	}
 
-	if err = syscall.SetsockoptInt(rawSocket, SOL_IP, IP_TRANSPARENT, 1); err != nil{
+	if err = syscall.SetsockoptInt(rawSocket, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil{
+		err = errors.Wrap(err, "Set raw socket opt failed")
+		syscall.Close(rawSocket)
+		rawSocket = 0
+		return
+	}
+	if err = syscall.SetsockoptInt(rawSocket, syscall.SOL_IP, syscall.IP_RECVORIGDSTADDR, 1); err != nil{
 		err = errors.Wrap(err, "Set raw socket opt failed")
 		syscall.Close(rawSocket)
 		rawSocket = 0
@@ -341,10 +332,10 @@ func bindSocketUDP(addr string) (ln *net.UDPConn, rawSocket int, err error){
 
 }
 
-func listenTcp(addr string) (ln net.Listener, rawSocket int,  err error){
+func listenTcp(addr string) (ln net.Listener, err error){
 	logger := log.GetLogger()
 
-	if ln, rawSocket, err = bindSocketTCP(addr); err != nil{
+	if ln, err = network.ListenTransparentTCP(addr, false); err != nil{
 		return
 	}
 
@@ -381,49 +372,42 @@ func handleTcpConn(conn net.Conn){
 	}
 
 	if n, err := conn.Write(lineBuffer[:readLen]); err != nil{
-		logger.Error("Handle TCP failed", zap.String("remoteAddr", conn.RemoteAddr().String()),zap.String("error", err.Error()))
+		logger.Error("Handle TCP failed", zap.String("remoteAddr", conn.RemoteAddr().String()), zap.String("localAddr", conn.(*net.TCPConn).LocalAddr().String()), zap.String("error", err.Error()))
 	}else if n < readLen{
-		logger.Error("Handle TCP failed, Write tcp less then expected", zap.String("remoteAddr", conn.RemoteAddr().String()),zap.Int("n", n), zap.Int("expected", len(lineBuffer)))
+		logger.Error("Handle TCP failed, Write tcp less then expected", zap.String("remoteAddr", conn.RemoteAddr().String()), zap.String("localAddr", conn.(*net.TCPConn).LocalAddr().String()), zap.Int("n", n), zap.Int("expected", len(lineBuffer)))
 	}else{
-		logger.Info("Handle tcp successful", zap.String("remoteAddr", conn.RemoteAddr().String()), zap.ByteString("msg", lineBuffer[:readLen]))
+		logger.Info("Handle tcp successful", zap.String("remoteAddr", conn.RemoteAddr().String()), zap.String("localAddr", conn.(*net.TCPConn).LocalAddr().String()), zap.ByteString("msg", lineBuffer[:readLen]))
 	}
 }
 
-func listenUdp(addr string) (ln *net.UDPConn, rawSocket int, err error){
+func listenUdp(addr string) (ln *net.UDPConn, err error){
 	logger := log.GetLogger()
-	//var udpAddr *net.UDPAddr
-	//if udpAddr, err = net.ResolveUDPAddr("udp", addr); err != nil{
-	//	return
-	//}
 
-	if ln, rawSocket, err = bindSocketUDP(addr); err != nil{
+	if ln, err = network.ListenTransparentUDP(addr, false); err != nil{
 		return
 	}
-
-	//if ln, err = net.ListenUDP("udp", udpAddr); err != nil{
-	//	return
-	//}
 	go func(){
 		logger.Info("Listen UDP successful", zap.String("addr", addr))
 		for{
 			udpBuffer := make([]byte, 4096)
-			if n, remoteAddr, err := ln.ReadFromUDP(udpBuffer); err != nil{
+			oob := make([]byte, 2048)
+			if len, src, dst, err := network.ReadFromTransparentUDP(ln, udpBuffer, oob); err != nil{
 				logger.Debug("Read udp failed", zap.String("error", err.Error()))
 			}else{
-				go handleUdp(ln, remoteAddr, udpBuffer[:n])
+				go handleUdp(ln, src, dst, udpBuffer[:len])
 			}
 		}
 	}()
 	return
 }
 
-func handleUdp(conn *net.UDPConn, addr *net.UDPAddr, data []byte){
+func handleUdp(conn *net.UDPConn, src *net.UDPAddr, dst *net.UDPAddr, data []byte){
 	logger := log.GetLogger()
 
-	if _, err := conn.WriteTo(data, addr); err != nil{
-		logger.Error("Handle UDP failed", zap.String("remoteAddr", addr.String()))
+	if _, err := conn.WriteTo(data, src); err != nil{
+		logger.Error("Handle UDP failed", zap.String("srcAddr", src.String()), zap.String("dstAddr", dst.String()))
 	}else{
-		logger.Info("Handle UDP successful", zap.String("remoteAddr", addr.String()), zap.ByteString("msg", data))
+		logger.Info("Handle UDP successful", zap.String("srcAddr", src.String()), zap.String("dstAddr", dst.String()), zap.ByteString("msg", data))
 	}
 }
 

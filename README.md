@@ -84,6 +84,7 @@ sudo iptables --flush
 sudo iptables -t nat --flush
 sudo iptables --delete-chain
 
+
 # accept incoming connection if local initialed
 sudo iptables -A INPUT -i enp0s3 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
