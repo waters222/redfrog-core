@@ -78,6 +78,32 @@ func main(){
 	var tcpListen net.Listener
 	var udpListen *net.UDPConn
 	var tcpRawFile int
+	var udpRawFile int
+
+	defer func(){
+
+		if tcpRawFile !=  0{
+			tcpListen.Close()
+			if err = syscall.Close(tcpRawFile); err != nil{
+				logger.Error("Close tcp raw file failed", zap.String("error", err.Error()))
+			}
+			tcpRawFile = 0
+		}
+		logger.Info("TCP listen closed")
+
+
+
+		if udpRawFile != 0 {
+			udpListen.Close()
+			if err = syscall.Close(udpRawFile); err != nil{
+				logger.Error("Close udp raw file failed", zap.String("error", err.Error()))
+			}
+			udpRawFile = 0
+		}
+		logger.Info("UDP listen closed")
+
+		os.Exit(1)
+	}()
 
 	var ticker *time.Ticker
 	if mode == "client" {
@@ -97,9 +123,11 @@ func main(){
 	}else if mode == "server"{
 		logger.Info("Running as server mode", zap.String("addr", addr), zap.Int("timeout", CONN_DEADLINE))
 		if tcpListen, tcpRawFile, err = listenTcp(addr); err != nil{
+			logger.Error("Listen TCP failed", zap.String("error", err.Error()))
 			return
 		}
-		if udpListen, err = listenUdp(addr); err != nil{
+		if udpListen, udpRawFile, err = listenUdp(addr); err != nil{
+			logger.Error("Listen UDP failed", zap.String("error", err.Error()))
 			return
 		}
 
@@ -107,17 +135,7 @@ func main(){
 		err = errors.New(fmt.Sprintf("Unknow mode type: %s", mode))
 		return
 	}
-	defer func(){
 
-		tcpListen.Close()
-		if tcpRawFile !=  0{
-			syscall.Close(tcpRawFile)
-		}
-
-		logger.Info("TCP listen closed")
-		udpListen.Close()
-		logger.Info("UDP listen closed")
-	}()
 
 
 
@@ -209,10 +227,13 @@ func writeUdp(addr string, msg string) (err error){
 
 	readBuffer := make([]byte, writeLen)
 	var readLen int
-	if readLen, err = conn.Read(readBuffer); err != nil{
-		return
+	if n, remoteAddr, err := conn.ReadFromUDP(readBuffer); err != nil{
+		logger.Error("Get udp response from server failed",zap.String("err", err.Error()))
+		return err
+	}else{
+		logger.Error("Get udp response from server successful",zap.String("addr", remoteAddr.String()))
+		readLen = n
 	}
-
 	if !checkEqual(readBuffer, writeBuffer, readLen){
 		err = errors.New(fmt.Sprintf("UDP response is not equal: %s != %s", readBuffer, writeBuffer))
 		return
@@ -222,8 +243,7 @@ func writeUdp(addr string, msg string) (err error){
 }
 
 
-func listenTcp(addr string) (ln net.Listener, rawSocket int,  err error){
-	logger := log.GetLogger()
+func bindSocketTCP(addr string) (ln net.Listener, rawSocket int, err error){
 	slugs := strings.Split(addr, ":")
 	if len(slugs) != 2 {
 		err = errors.New(fmt.Sprintf("Invalid addr format: %s", addr))
@@ -249,6 +269,54 @@ func listenTcp(addr string) (ln net.Listener, rawSocket int,  err error){
 		err = errors.Wrap(err, "Open raw socket for stream for tcp failed")
 		return
 	}
+
+	if err = syscall.SetsockoptInt(rawSocket, SOL_IP, IP_TRANSPARENT, 1); err != nil{
+		err = errors.Wrap(err, "Set raw socket opt failed")
+		syscall.Close(rawSocket)
+		rawSocket = 0
+		return
+	}
+	socketAddr := syscall.SockaddrInet4{Port: int(port), Addr: ip}
+	if err = syscall.Bind(rawSocket, &socketAddr); err != nil{
+		syscall.Close(rawSocket)
+		rawSocket = 0
+		err = errors.Wrap(err, "Bind socket failed")
+		return
+	}
+	syscall.Listen(rawSocket, syscall.SOMAXCONN)
+	if ln, err = net.FileListener(os.NewFile(uintptr(rawSocket), "listenTCP")); err != nil{
+		syscall.Close(rawSocket)
+		rawSocket = 0
+	}
+	return
+}
+func bindSocketUDP(addr string) (ln *net.UDPConn, rawSocket int, err error){
+	slugs := strings.Split(addr, ":")
+	if len(slugs) != 2 {
+		err = errors.New(fmt.Sprintf("Invalid addr format: %s", addr))
+		return
+	}
+	var ip [4]byte
+	if ipTemp := net.ParseIP(slugs[0]); ipTemp == nil{
+		err = errors.New(fmt.Sprintf("Invalid IP address: %s", slugs[0]))
+		return
+	}else{
+		ipTemp = ipTemp.To4()
+		ip = [4]byte{ipTemp[0], ipTemp[1], ipTemp[2], ipTemp[3]}
+	}
+
+	var port int64
+	if port, err = strconv.ParseInt(slugs[1], 10, 32); err != nil{
+		err = errors.New(fmt.Sprintf("Port format invalid: %s", slugs[1]))
+		return
+	}
+
+
+	if rawSocket, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, syscall.IPPROTO_UDP); err != nil{
+		err = errors.Wrap(err, "Open raw socket for stream for tcp failed")
+		return
+	}
+
 	if err = syscall.SetsockoptInt(rawSocket, SOL_IP, IP_TRANSPARENT, 1); err != nil{
 		err = errors.Wrap(err, "Set raw socket opt failed")
 		syscall.Close(rawSocket)
@@ -263,10 +331,20 @@ func listenTcp(addr string) (ln net.Listener, rawSocket int,  err error){
 		return
 	}
 
-	syscall.Listen(rawSocket, syscall.SOMAXCONN)
-	if ln, err = net.FileListener(os.NewFile(uintptr(rawSocket), "listenTCP")); err != nil{
-		syscall.Close(rawSocket)
-		rawSocket = 0
+	if lnn, ee := net.FileConn(os.NewFile(uintptr(rawSocket), "listenUDP")); ee != nil{
+		err = ee
+		return
+	}else{
+		ln = lnn.(*net.UDPConn)
+	}
+	return
+
+}
+
+func listenTcp(addr string) (ln net.Listener, rawSocket int,  err error){
+	logger := log.GetLogger()
+
+	if ln, rawSocket, err = bindSocketTCP(addr); err != nil{
 		return
 	}
 
@@ -311,15 +389,20 @@ func handleTcpConn(conn net.Conn){
 	}
 }
 
-func listenUdp(addr string) (ln *net.UDPConn, err error){
+func listenUdp(addr string) (ln *net.UDPConn, rawSocket int, err error){
 	logger := log.GetLogger()
-	var udpAddr *net.UDPAddr
-	if udpAddr, err = net.ResolveUDPAddr("udp", addr); err != nil{
+	//var udpAddr *net.UDPAddr
+	//if udpAddr, err = net.ResolveUDPAddr("udp", addr); err != nil{
+	//	return
+	//}
+
+	if ln, rawSocket, err = bindSocketUDP(addr); err != nil{
 		return
 	}
-	if ln, err = net.ListenUDP("udp", udpAddr); err != nil{
-		return
-	}
+
+	//if ln, err = net.ListenUDP("udp", udpAddr); err != nil{
+	//	return
+	//}
 	go func(){
 		logger.Info("Listen UDP successful", zap.String("addr", addr))
 		for{
@@ -336,6 +419,7 @@ func listenUdp(addr string) (ln *net.UDPConn, err error){
 
 func handleUdp(conn *net.UDPConn, addr *net.UDPAddr, data []byte){
 	logger := log.GetLogger()
+
 	if _, err := conn.WriteTo(data, addr); err != nil{
 		logger.Error("Handle UDP failed", zap.String("remoteAddr", addr.String()))
 	}else{

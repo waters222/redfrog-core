@@ -21,26 +21,27 @@ sudo iptables  -t nat -A OUTPUT -p udp -d 192.168.1.1 -j DNAT --to-destination 1
 sudo iptables -t mangle --flush
 sudo iptables -t mangle -X
 
-sudo iptables -t mangle -N DIVERT
-sudo iptables -t mangle -A DIVERT -j MARK --set-mark 0x1/0x1
-sudo iptables -t mangle -A DIVERT -j ACCEPT
-sudo iptables -t mangle -A PREROUTING -p tcp -m socket -j DIVERT
+sudo iptables -t mangle -N DIVERT_TCP
+sudo iptables -t mangle -A DIVERT_TCP -j MARK --set-mark 0x1/0x1
+sudo iptables -t mangle -A DIVERT_TCP -j ACCEPT
+sudo iptables -t mangle -A PREROUTING -p tcp -m socket -j DIVERT_TCP
 
-sudo iptables -t mangle -N PROXY
-sudo iptables -t mangle -A PROXY -p tcp -j TPROXY --tproxy-mark 0x1/0x1 --on-port 9090
-sudo iptables -t mangle -A PROXY -j ACCEPT
-
-sudo iptables -t mangle -A PREROUTING -p tcp -d 1.2.3.4 -j PROXY
+sudo iptables -t mangle -A PREROUTING -p tcp -d 1.2.3.4 -j TPROXY --tproxy-mark 0x1/0x1 --on-port 9090
 
 
+sudo iptables -t mangle -A PREROUTING -p udp -d 1.2.3.4 -j TPROXY --tproxy-mark 0x1/0x1 --on-port 9090
+#sudo iptables -t mangle -A OUTPUT -p udp -d 1.2.3.4 -j MARK --set-mark 0x1/0x1
 
-# del ip rule
+
+#show rules
 sudo ip rule show
-sudo ip rule add fwmark 0x1/0x1 lookup 101
+sudo ip route show table 100
 
-#del ip route
-sudo ip route show 101
-sudo ip route add local default dev lo table 101
+# add rule
+sudo ip rule add fwmark 0x1/0x1 lookup 100
+sudo ip route add local 0.0.0.0/0 dev lo table 100
+
+
  
  # run test proxy server
 sudo ./tcprdr -4 -t -L 0.0.0.0 9090 127.0.0.1 9191 
