@@ -16,17 +16,30 @@ sudo iptables -t nat -D OUTPUT 1
 sudo iptables  -t nat -A OUTPUT -p tcp -d 192.168.1.1 -j DNAT --to-destination 10.0.0.52:9090
 sudo iptables  -t nat -A OUTPUT -p udp -d 192.168.1.1 -j DNAT --to-destination 10.0.0.52:9090
 
+
+
+
+sudo iptables -t mangle -A PREROUTING -i enp0s8 -p tcp -d 1.2.3.4 -j TPROXY --on-port 0 --on-ip 0.0.0.0 --tproxy-mark 100
+
 ```
 
+```bash
+
+# open tracing
+sudo iptables -t raw -A PREROUTING  -i enp0s8 -p tcp -s 192.168.0.10 -j TRACE 
+sudo tail -f /var/log/kern.log | grep 'TRACE:'
+
+```
 
 ```bash
 ## list route
 sudo ip r|grep default
 
-## adding default gateway
-sudo ip route add default via 192.168.0.1
 ## remove default gw
 sudo ip route del default via 192.168.0.1
+## adding default gateway
+sudo ip route add default via 192.168.0.1
+
 
 ```
 
@@ -52,5 +65,7 @@ sudo iptables -A FORWARD -i enp0s8 -o enp0s3 -j ACCEPT
 sudo iptables -A FORWARD -i enp0s3 -o enp0s8 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 ## MASQUERADE all connection for post routing
 sudo iptables -t nat -A POSTROUTING -o enp0s3 -j MASQUERADE
+
+sudo iptables -A INPUT -i enp0s8 -j ACCEPT
 
 ```
