@@ -18,10 +18,37 @@ sudo iptables  -t nat -A OUTPUT -p udp -d 192.168.1.1 -j DNAT --to-destination 1
 
 
 
+sudo iptables -t mangle --flush
+sudo iptables -t mangle -X
 
-sudo iptables -t mangle -A PREROUTING -i enp0s8 -p tcp -d 1.2.3.4 -j TPROXY --on-port 0 --on-ip 0.0.0.0 --tproxy-mark 100
+sudo iptables -t mangle -N DIVERT
+sudo iptables -t mangle -A DIVERT -j MARK --set-mark 0x1/0x1
+sudo iptables -t mangle -A DIVERT -j ACCEPT
+sudo iptables -t mangle -A PREROUTING -p tcp -m socket -j DIVERT
 
+sudo iptables -t mangle -N PROXY
+sudo iptables -t mangle -A PROXY -p tcp -j TPROXY --tproxy-mark 0x1/0x1 --on-port 9090
+sudo iptables -t mangle -A PROXY -j ACCEPT
+
+sudo iptables -t mangle -A PREROUTING -p tcp -d 1.2.3.4 -j PROXY
+
+
+
+# del ip rule
+sudo ip rule show
+sudo ip rule add fwmark 0x1/0x1 lookup 101
+
+#del ip route
+sudo ip route show 101
+sudo ip route add local default dev lo table 101
+ 
+ # run test proxy server
+sudo ./tcprdr -4 -t -L 0.0.0.0 9090 127.0.0.1 9191 
 ```
+
+
+
+
 
 ```bash
 
