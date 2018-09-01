@@ -30,16 +30,15 @@ sudo iptables -t mangle -A PREROUTING -p tcp -d 1.2.3.4 -j TPROXY --tproxy-mark 
 
 
 sudo iptables -t mangle -A PREROUTING -p udp -d 1.2.3.4 -j TPROXY --tproxy-mark 0x1/0x1 --on-port 9090
-#sudo iptables -t mangle -A OUTPUT -p udp -d 1.2.3.4 -j MARK --set-mark 0x1/0x1
 
+# add rule
+sudo ip rule add fwmark 0x1/0x1 lookup 100
+sudo ip route add local 0.0.0.0/0 dev lo table 100
 
 #show rules
 sudo ip rule show
 sudo ip route show table 100
 
-# add rule
-sudo ip rule add fwmark 0x1/0x1 lookup 100
-sudo ip route add local 0.0.0.0/0 dev lo table 100
 
 
  
