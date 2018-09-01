@@ -12,6 +12,43 @@
 #   ip_setting_file = YAML.load_file('.vagrant/ip_setting.yaml')
 #   ip_addr = ip_setting_file['ip']
 # end
+$nat_script = <<-NAT_SCRIPT
+sudo iptables --flush
+sudo iptables -t nat --flush
+sudo iptables --delete-chain
+
+sudo iptables -A INPUT -i enp0s3 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+sudo iptables -A FORWARD -i enp0s8 -o enp0s3 -j ACCEPT
+sudo iptables -A FORWARD -i enp0s3 -o enp0s8 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -t nat -A POSTROUTING -o enp0s3 -j MASQUERADE
+
+sudo iptables -A INPUT -i enp0s8 -j ACCEPT
+
+NAT_SCRIPT
+
+$tproxy_script = <<-TPROXY_SCRIPT
+sudo iptables -t mangle --flush
+sudo iptables -t mangle -X
+
+sudo iptables -t mangle -N DIVERT_TCP
+sudo iptables -t mangle -A DIVERT_TCP -j MARK --set-mark 0x1/0x1
+sudo iptables -t mangle -A DIVERT_TCP -j ACCEPT
+sudo iptables -t mangle -A PREROUTING -p tcp -m socket -j DIVERT_TCP
+
+sudo iptables -t mangle -A PREROUTING -p tcp -d 1.2.3.4 -j TPROXY --tproxy-mark 0x1/0x1 --on-port 9090
+
+
+sudo iptables -t mangle -A PREROUTING -p udp -d 1.2.3.4 -j TPROXY --tproxy-mark 0x1/0x1 --on-port 9090
+
+sudo ip rule add fwmark 0x1/0x1 lookup 100
+sudo ip route add local 0.0.0.0/0 dev lo table 100
+TPROXY_SCRIPT
+
+$gw_scrirpt = <<-GW_SCRIPT
+sudo ip route del default
+sudo ip route add default via 192.168.0.1
+GW_SCRIPT
 
 Vagrant.configure("2") do |config|
   # The most common configuration options are documented and commented below.
@@ -101,6 +138,8 @@ Vagrant.configure("2") do |config|
     gateway.vm.hostname = "gateway"
     gateway.vm.network "private_network", ip: "192.168.0.1" , virtualbox__intnet: "mynet"
     gateway.vm.network "forwarded_port", guest: 40000, host: 40000
+    gateway.vm.provision "shell", inline: $nat_script
+    gateway.vm.provision "shell", inline: $tproxy_script
     #gateway.vm.network "public_network", ip: ip_addr
     # gateway.vm.network "public_network", ip: "10.0.0.52"
     # gateway.vm.provision "shell",
@@ -115,9 +154,7 @@ Vagrant.configure("2") do |config|
     client.vm.box = "ubuntu/bionic64"
     client.vm.hostname = "client"
     client.vm.network "private_network", ip: "192.168.0.10", virtualbox__intnet: "mynet"
-    # client.vm.provision "shell",
-    #   run: "always",
-    #   inline: "route add default gw 192.168.0.1"
+    client.vm.provision "shell", inline: $gw_scrirpt
     # client.vm.provision "shell",
     #   run: "always",
     #   inline: "eval `route -n | awk '{ if ($8 ==\"eth0\" && $2 != \"0.0.0.0\") print \"route del default gw \" $2; }'`"
