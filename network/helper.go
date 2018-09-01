@@ -33,9 +33,8 @@ func ParseIPv4(addr string) (socketAddr syscall.SockaddrInet4, err error){
 			err = errors.New(fmt.Sprintf("Invalid ip address: %s", matches[0][1]))
 			return
 		}else{
-			ip := [4]byte{}
+			ip := [net.IPv4len]byte{}
 			copy(ip[:], ipTemp.To4())
-			//ip := [4]byte{ipTemp[0], ipTemp[1], ipTemp[2], ipTemp[3]}
 			if port, ee := strconv.ParseUint(matches[0][2], 10, 32); ee != nil{
 				err = errors.New(fmt.Sprintf("Port parse failed: %s", matches[0][2]))
 			}else{
@@ -60,9 +59,8 @@ func ParseIPv6(addr string) (socketAddr syscall.SockaddrInet6, err error){
 			err = errors.New(fmt.Sprintf("Invalid ip address: %s", matches[0][1]))
 			return
 		}else{
-				ip := [16]byte{}
+				ip := [net.IPv6len]byte{}
 				copy(ip[:], ipTemp.To16())
-				//ip := [16]byte{ipTemp[0], ipTemp[1], ipTemp[2], ipTemp[3], ipTemp[4], ipTemp[5], ipTemp[6], ipTemp[7], ipTemp[8], ipTemp[9], ipTemp[10], ipTemp[11], ipTemp[12], ipTemp[13], ipTemp[14], ipTemp[15]}
 			if port, ee := strconv.ParseUint(matches[0][2], 10, 32); ee != nil{
 				err = errors.New(fmt.Sprintf("Port parse failed: %s", matches[0][2]))
 			}else{
@@ -221,6 +219,56 @@ func ReadFromTransparentUDP(conn *net.UDPConn, b []byte, oob []byte) (len int, s
 	}
 	if dst == nil{
 		err = errors.New("Can not obtain UDP origin dst")
+	}
+
+	return
+}
+
+func DialTransparentUDP(addr *net.UDPAddr, isIPv6 bool) (ln *net.UDPConn, err error){
+	socketType := syscall.AF_INET
+	if isIPv6 {
+		socketType = syscall.AF_INET6
+	}
+
+	var socketFD int
+	if socketFD, err = syscall.Socket(socketType, syscall.SOCK_DGRAM, syscall.IPPROTO_UDP); err != nil{
+		err = errors.Wrap(err, "Open UDP socket failed")
+		return
+	}
+	defer syscall.Close(socketFD)
+
+	if err = syscall.SetsockoptInt(socketFD, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil{
+		err = errors.Wrap(err, "Set sockopt IP_TRANSPARENT failed")
+		return
+	}
+
+
+	if isIPv6 {
+		ip := [net.IPv6len]byte{}
+		copy(ip[:], addr.IP.To16())
+		socketAddr := syscall.SockaddrInet6{Addr: ip, Port:addr.Port}
+		if err = syscall.Bind(socketFD, &socketAddr); err != nil{
+			err = errors.Wrap(err, "Bind UDP socket failed")
+			return
+		}
+
+	}else{
+		ip := [net.IPv4len]byte{}
+		copy(ip[:], addr.IP.To4())
+		socketAddr := syscall.SockaddrInet4{Addr: ip, Port:addr.Port}
+		if err = syscall.Bind(socketFD, &socketAddr); err != nil{
+			err = errors.Wrap(err, fmt.Sprintf("Bind UDP socket %s failed", addr.String()))
+			return
+		}
+	}
+
+	tempFD := os.NewFile(uintptr(socketFD), fmt.Sprintf("dialUDP %s", addr.String()))
+	defer tempFD.Close()
+
+	var conn net.Conn
+	conn, err = net.FileConn(tempFD)
+	if err == nil{
+		ln = conn.(*net.UDPConn)
 	}
 
 	return

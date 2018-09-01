@@ -11,8 +11,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -143,10 +141,10 @@ func runClient(addr string, msg string){
 	var err error
 	logger.Info("Running as client mode", zap.String("addr", addr))
 	if err = writeTcp(addr, msg); err != nil{
-		logger.Error("TCP write failed", zap.String("error", err.Error()))
+		logger.Error("TCP Client failed", zap.String("error", err.Error()))
 	}
 	if err = writeUdp(addr, msg); err != nil{
-		logger.Error("UDP write failed", zap.String("error", err.Error()))
+		logger.Error("UDP Client failed", zap.String("error", err.Error()))
 	}
 }
 func writeTcp(addr string, msg string) (err error){
@@ -199,13 +197,14 @@ func writeUdp(addr string, msg string) (err error){
 	}
 	defer conn.Close()
 	//
-	if err = conn.SetDeadline(time.Now().Add(time.Second * time.Duration(CONN_DEADLINE))); err != nil{
+	if err = conn.SetReadDeadline(time.Now().Add(time.Second * time.Duration(CONN_DEADLINE))); err != nil{
 		return
 	}
 
 	writeBuffer := []byte(msg)
 	var writeLen int
 	if writeLen, err = conn.Write(writeBuffer); err != nil{
+		logger.Error("UDP write failed", zap.String("error", err.Error()))
 		return err
 	}
 
@@ -226,111 +225,6 @@ func writeUdp(addr string, msg string) (err error){
 	return
 }
 
-
-func bindSocketTCP(addr string) (ln net.Listener, rawSocket int, err error){
-	slugs := strings.Split(addr, ":")
-	if len(slugs) != 2 {
-		err = errors.New(fmt.Sprintf("Invalid addr format: %s", addr))
-		return
-	}
-	var ip [4]byte
-	if ipTemp := net.ParseIP(slugs[0]); ipTemp == nil{
-		err = errors.New(fmt.Sprintf("Invalid IP address: %s", slugs[0]))
-		return
-	}else{
-		ipTemp = ipTemp.To4()
-		ip = [4]byte{ipTemp[0], ipTemp[1], ipTemp[2], ipTemp[3]}
-	}
-
-	var port int64
-	if port, err = strconv.ParseInt(slugs[1], 10, 32); err != nil{
-		err = errors.New(fmt.Sprintf("Port format invalid: %s", slugs[1]))
-		return
-	}
-
-	if rawSocket, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, syscall.IPPROTO_TCP); err != nil{
-		err = errors.Wrap(err, "Open raw socket for stream for tcp failed")
-		return
-	}
-
-	if err = syscall.SetsockoptInt(rawSocket, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil{
-		err = errors.Wrap(err, "Set raw socket opt failed")
-		syscall.Close(rawSocket)
-		rawSocket = 0
-		return
-	}
-	socketAddr := syscall.SockaddrInet4{Port: int(port), Addr: ip}
-	if err = syscall.Bind(rawSocket, &socketAddr); err != nil{
-		syscall.Close(rawSocket)
-		rawSocket = 0
-		err = errors.Wrap(err, "Bind socket failed")
-		return
-	}
-	syscall.Listen(rawSocket, syscall.SOMAXCONN)
-	aa := os.NewFile(uintptr(rawSocket), "listenTCP")
-	aa.Fd()
-	if ln, err = net.FileListener(os.NewFile(uintptr(rawSocket), "listenTCP")); err != nil{
-		syscall.Close(rawSocket)
-		rawSocket = 0
-	}
-	return
-}
-func bindSocketUDP(addr string) (ln *net.UDPConn, rawSocket int, err error){
-	slugs := strings.Split(addr, ":")
-	if len(slugs) != 2 {
-		err = errors.New(fmt.Sprintf("Invalid addr format: %s", addr))
-		return
-	}
-	var ip [4]byte
-	if ipTemp := net.ParseIP(slugs[0]); ipTemp == nil{
-		err = errors.New(fmt.Sprintf("Invalid IP address: %s", slugs[0]))
-		return
-	}else{
-		ipTemp = ipTemp.To4()
-		ip = [4]byte{ipTemp[0], ipTemp[1], ipTemp[2], ipTemp[3]}
-	}
-
-	var port int64
-	if port, err = strconv.ParseInt(slugs[1], 10, 32); err != nil{
-		err = errors.New(fmt.Sprintf("Port format invalid: %s", slugs[1]))
-		return
-	}
-
-
-	if rawSocket, err = syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, syscall.IPPROTO_UDP); err != nil{
-		err = errors.Wrap(err, "Open raw socket for stream for tcp failed")
-		return
-	}
-
-	if err = syscall.SetsockoptInt(rawSocket, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil{
-		err = errors.Wrap(err, "Set raw socket opt failed")
-		syscall.Close(rawSocket)
-		rawSocket = 0
-		return
-	}
-	if err = syscall.SetsockoptInt(rawSocket, syscall.SOL_IP, syscall.IP_RECVORIGDSTADDR, 1); err != nil{
-		err = errors.Wrap(err, "Set raw socket opt failed")
-		syscall.Close(rawSocket)
-		rawSocket = 0
-		return
-	}
-	socketAddr := syscall.SockaddrInet4{Port: int(port), Addr: ip}
-	if err = syscall.Bind(rawSocket, &socketAddr); err != nil{
-		syscall.Close(rawSocket)
-		rawSocket = 0
-		err = errors.Wrap(err, "Bind socket failed")
-		return
-	}
-
-	if lnn, ee := net.FileConn(os.NewFile(uintptr(rawSocket), "listenUDP")); ee != nil{
-		err = ee
-		return
-	}else{
-		ln = lnn.(*net.UDPConn)
-	}
-	return
-
-}
 
 func listenTcp(addr string) (ln net.Listener, err error){
 	logger := log.GetLogger()
@@ -391,24 +285,35 @@ func listenUdp(addr string) (ln *net.UDPConn, err error){
 		for{
 			udpBuffer := make([]byte, 4096)
 			oob := make([]byte, 2048)
-			if len, src, dst, err := network.ReadFromTransparentUDP(ln, udpBuffer, oob); err != nil{
+			if dataLen, src, dst, err := network.ReadFromTransparentUDP(ln, udpBuffer, oob); err != nil{
 				logger.Debug("Read udp failed", zap.String("error", err.Error()))
 			}else{
-				go handleUdp(ln, src, dst, udpBuffer[:len])
+				go handleUdp(src, dst, udpBuffer[:dataLen])
 			}
 		}
 	}()
 	return
 }
 
-func handleUdp(conn *net.UDPConn, src *net.UDPAddr, dst *net.UDPAddr, data []byte){
+func handleUdp(src *net.UDPAddr, dst *net.UDPAddr, data []byte){
 	logger := log.GetLogger()
 
-	if _, err := conn.WriteTo(data, src); err != nil{
-		logger.Error("Handle UDP failed", zap.String("srcAddr", src.String()), zap.String("dstAddr", dst.String()))
+	conn, err := network.DialTransparentUDP(dst, false)
+	if err != nil{
+		logger.Error("Can not create udp conn", zap.String("error", err.Error()))
+		return
+	}
+	if _, err = conn.WriteToUDP(data, src); err != nil{
+		logger.Error("Handle UDP failed", zap.String("src", src.String()), zap.String("dst", dst.String()), zap.String("error",err.Error()))
 	}else{
 		logger.Info("Handle UDP successful", zap.String("srcAddr", src.String()), zap.String("dstAddr", dst.String()), zap.ByteString("msg", data))
 	}
+
+	//if _, err := conn.WriteTo(data, src); err != nil{
+	//	logger.Error("Handle UDP failed", zap.String("srcAddr", src.String()), zap.String("dstAddr", dst.String()))
+	//}else{
+	//	logger.Info("Handle UDP successful", zap.String("srcAddr", src.String()), zap.String("dstAddr", dst.String()), zap.ByteString("msg", data))
+	//}
 }
 
 
