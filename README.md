@@ -7,16 +7,8 @@ Based on [miekg/dns](https://github.com/miekg/dns)
 
 ### list nat rules
 sudo iptables -t nat -L --line-numbers
-### delete rule based on line
 
-sudo iptables -t nat -D OUTPUT 1
-
-### Add DNAT chain for local test
-
-sudo iptables  -t nat -A OUTPUT -p tcp -d 192.168.1.1 -j DNAT --to-destination 10.0.0.52:9090
-sudo iptables  -t nat -A OUTPUT -p udp -d 192.168.1.1 -j DNAT --to-destination 10.0.0.52:9090
-
-
+### Tproxy Ruel
 
 sudo iptables -t mangle --flush
 sudo iptables -t mangle -X
@@ -30,16 +22,15 @@ sudo iptables -t mangle -A PREROUTING -p tcp -d 1.2.3.4 -j TPROXY --tproxy-mark 
 
 
 sudo iptables -t mangle -A PREROUTING -p udp -d 1.2.3.4 -j TPROXY --tproxy-mark 0x1/0x1 --on-port 9090
-#sudo iptables -t mangle -A OUTPUT -p udp -d 1.2.3.4 -j MARK --set-mark 0x1/0x1
 
+# add rule
+sudo ip rule add fwmark 0x1/0x1 lookup 100
+sudo ip route add local 0.0.0.0/0 dev lo table 100
 
 #show rules
 sudo ip rule show
 sudo ip route show table 100
 
-# add rule
-sudo ip rule add fwmark 0x1/0x1 lookup 100
-sudo ip route add local 0.0.0.0/0 dev lo table 100
 
 
  
@@ -83,6 +74,7 @@ sudo sysctl -p /etc/sysctl.conf
 sudo iptables --flush
 sudo iptables -t nat --flush
 sudo iptables --delete-chain
+
 
 # accept incoming connection if local initialed
 sudo iptables -A INPUT -i enp0s3 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
