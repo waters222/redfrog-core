@@ -16,6 +16,7 @@ type DnsConfig struct {
 }
 
 type KcptunConfig struct {
+	Enable		bool		`yaml:"enable"`
 	RemoteServer 	string 		`yaml:"remote-server"`
 	Crypt			string 		`yaml:"crypt"`
 	Key				string 		`yaml:"key"`
@@ -34,7 +35,7 @@ type KcptunConfig struct {
 type ServerConfig struct{
 	RemoteServer	string 			`yaml:"remote-server"`
 	Crypt			string 			`yaml:"crypt"`
-	Key				string 			`yaml:"key"`
+	Password		string 			`yaml:"password"`
 	Kcptun			KcptunConfig	`yaml:"kcptun"`
 }
 

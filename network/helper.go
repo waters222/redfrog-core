@@ -20,56 +20,85 @@ const (
 	ipv6Regex = "^\\[(.+)\\]\\:([0-9]+)$"
 )
 
-func ParseIPv4(addr string) (socketAddr syscall.SockaddrInet4, err error){
+func CheckIPFamily(addr string) (ret bool, err error) {
 	var re *regexp.Regexp
 	if re , err = regexp.Compile(ipv4Regex); err != nil{
-		err = errors.Wrap(err, "Compile ipv4 regex failed")
+		err = errors.Wrap(err, "Compile ip regex failed")
+	}else{
+		if matches := re.FindAllStringSubmatch(addr, -1); len(matches) != 0 && len(matches[0]) == 3 {
+			ret = false
+			return
+		}
+	}
+
+	if re , err = regexp.Compile(ipv6Regex); err != nil{
+		err = errors.Wrap(err, "Compile ip regex failed")
+	}else{
+		if matches := re.FindAllStringSubmatch(addr, -1); len(matches) != 0 && len(matches[0]) == 3 {
+			ret = true
+			return
+		}
+	}
+
+
+	return
+}
+
+
+func ParseAddr(addr string, isIpV6 bool) (ip net.IP, port int, err error){
+	var re *regexp.Regexp
+	regexSelection := ipv4Regex
+	if isIpV6 {
+		regexSelection = ipv6Regex
+	}
+	if re , err = regexp.Compile(regexSelection); err != nil{
+		err = errors.Wrap(err, "Compile ip regex failed")
 		return
 	}
 	if matches := re.FindAllStringSubmatch(addr, -1); len(matches) == 0 && len(matches[0]) != 3{
 		err = errors.New(fmt.Sprintf("Invalid ip address %s", addr))
 	}else{
-		if ipTemp := net.ParseIP(matches[0][1]); ipTemp == nil{
+		var portTemp uint64
+		if ip = net.ParseIP(matches[0][1]); ip == nil{
 			err = errors.New(fmt.Sprintf("Invalid ip address: %s", matches[0][1]))
-			return
+		}else if portTemp, err = strconv.ParseUint(matches[0][2], 10, 32); err != nil{
+			err = errors.New(fmt.Sprintf("Port parse failed: %s", matches[0][2]))
 		}else{
-			ip := [net.IPv4len]byte{}
-			copy(ip[:], ipTemp.To4())
-			if port, ee := strconv.ParseUint(matches[0][2], 10, 32); ee != nil{
-				err = errors.New(fmt.Sprintf("Port parse failed: %s", matches[0][2]))
-			}else{
-				socketAddr = syscall.SockaddrInet4{Port: int(port), Addr: ip}
-			}
+			port = int(portTemp)
 		}
 	}
 
 	return
 }
 
-func ParseIPv6(addr string) (socketAddr syscall.SockaddrInet6, err error){
-	var re *regexp.Regexp
-	if re , err = regexp.Compile(ipv6Regex); err != nil{
-		err = errors.Wrap(err, "Compile ipv6 regex failed")
+
+func ParseIPv4(addr string) (socketAddr syscall.SockaddrInet4, err error){
+	var ip net.IP
+	var port int
+	if ip, port, err = ParseAddr(addr, false); err != nil{
 		return
 	}
-	if matches := re.FindAllStringSubmatch(addr, -1); len(matches) == 0 && len(matches[0]) != 3{
-		err = errors.New(fmt.Sprintf("Invalid ip address %s", addr))
-	}else{
-		if ipTemp := net.ParseIP(matches[0][1]); ipTemp == nil{
-			err = errors.New(fmt.Sprintf("Invalid ip address: %s", matches[0][1]))
-			return
-		}else{
-				ip := [net.IPv6len]byte{}
-				copy(ip[:], ipTemp.To16())
-			if port, ee := strconv.ParseUint(matches[0][2], 10, 32); ee != nil{
-				err = errors.New(fmt.Sprintf("Port parse failed: %s", matches[0][2]))
-			}else{
-				socketAddr = syscall.SockaddrInet6{Port: int(port), Addr: ip}
-			}
-		}
-	}
+	ipBuffer := [net.IPv4len]byte{}
+	copy(ipBuffer[:], ip.To4())
+	socketAddr = syscall.SockaddrInet4{Port: port, Addr: ipBuffer}
 
 	return
+
+}
+
+func ParseIPv6(addr string) (socketAddr syscall.SockaddrInet6, err error){
+
+	var ip net.IP
+	var port int
+	if ip, port, err = ParseAddr(addr, true); err != nil{
+		return
+	}
+	ipBuffer := [net.IPv6len]byte{}
+	copy(ipBuffer[:], ip.To16())
+	socketAddr = syscall.SockaddrInet6{Port: port, Addr: ipBuffer}
+
+	return
+
 }
 
 func ListenTransparentTCP(addr string, isIPv6 bool) (ln net.Listener, err error){

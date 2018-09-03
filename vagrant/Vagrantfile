@@ -28,16 +28,11 @@ sudo iptables -A INPUT -i enp0s8 -j ACCEPT
 NAT_SCRIPT
 
 $tproxy_script = <<-TPROXY_SCRIPT
+
 sudo iptables -t mangle --flush
 sudo iptables -t mangle -X
 
-sudo iptables -t mangle -N DIVERT_TCP
-sudo iptables -t mangle -A DIVERT_TCP -j MARK --set-mark 0x1/0x1
-sudo iptables -t mangle -A DIVERT_TCP -j ACCEPT
-sudo iptables -t mangle -A PREROUTING -p tcp -m socket -j DIVERT_TCP
-
 sudo iptables -t mangle -A PREROUTING -p tcp -d 1.2.3.4 -j TPROXY --tproxy-mark 0x1/0x1 --on-port 9090
-
 
 sudo iptables -t mangle -A PREROUTING -p udp -d 1.2.3.4 -j TPROXY --tproxy-mark 0x1/0x1 --on-port 9090
 

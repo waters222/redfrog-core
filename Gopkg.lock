@@ -2,6 +2,15 @@
 
 
 [[projects]]
+  branch = "master"
+  name = "github.com/aead/chacha20"
+  packages = [
+    ".",
+    "chacha"
+  ]
+  revision = "8b13a72661dae6e9e5dea04f344f0dc95ea29547"
+
+[[projects]]
   name = "github.com/miekg/dns"
   packages = ["."]
   revision = "5a2b9fab83ff0f8bfc99684bd5f43a37abe560f1"
@@ -12,6 +21,16 @@
   packages = ["."]
   revision = "645ef00459ed84a119197bfb8d8205042c6df63d"
   version = "v0.8.0"
+
+[[projects]]
+  name = "github.com/shadowsocks/go-shadowsocks2"
+  packages = [
+    "core",
+    "shadowaead",
+    "shadowstream"
+  ]
+  revision = "8f3c47fc33218e7f547bd95e90269a30f7cbbed7"
+  version = "v0.0.11"
 
 [[projects]]
   name = "go.uber.org/atomic"
@@ -42,8 +61,13 @@
   branch = "master"
   name = "golang.org/x/crypto"
   packages = [
+    "chacha20poly1305",
     "ed25519",
-    "ed25519/internal/edwards25519"
+    "ed25519/internal/edwards25519",
+    "hkdf",
+    "internal/chacha20",
+    "internal/subtle",
+    "poly1305"
   ]
   revision = "614d502a4dac94afa3a6ce146bd1736da82514c6"
 
@@ -60,6 +84,12 @@
   revision = "faa378e6dbaed88bd8100f8bcf09939375c6e8fa"
 
 [[projects]]
+  branch = "master"
+  name = "golang.org/x/sys"
+  packages = ["cpu"]
+  revision = "fa5fdf94c78965f1aa8423f0cc50b8b8d728b05a"
+
+[[projects]]
   name = "gopkg.in/yaml.v2"
   packages = ["."]
   revision = "5420a8b6744d3b0345ab293f6fcba19c978f1183"
@@ -68,6 +98,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "4a6407904eed4600352283be64e43678ebb688276bc64f495b5b38dba868fa76"
+  inputs-digest = "9d034f612ea6a828ed57a370c48a5f8c3148e92a8322f87787e71e74924a905b"
   solver-name = "gps-cdcl"
   solver-version = 1

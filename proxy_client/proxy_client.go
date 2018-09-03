@@ -3,7 +3,8 @@ package proxy_client
 import "github.com/weishi258/redfrog-core/config"
 
 type ProxyClient struct {
-
+	servers_				[]proxyBackend
+	udpLeakyBuffer_ 		chan[][]byte
 
 }
 
