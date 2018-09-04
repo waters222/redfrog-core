@@ -13,8 +13,9 @@ shadowsocks:
   servers:
     - remote-server: "146.71.79.80:8445"
       crypt: "AEAD_CHACHA20_POLY1305"
-      key: "123321A"
+      Password: "123321A"
       kcptun:
+        enable: false
         remote-server: "146.71.79.80:8446"
         key: "JumpJumpJump!!!"
         crypt: "salsa20"

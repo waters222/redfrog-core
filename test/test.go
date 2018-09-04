@@ -303,17 +303,14 @@ func handleUdp(src *net.UDPAddr, dst *net.UDPAddr, data []byte){
 		logger.Error("Can not create udp conn", zap.String("error", err.Error()))
 		return
 	}
+	defer conn.Close()
+
 	if _, err = conn.WriteToUDP(data, src); err != nil{
 		logger.Error("Handle UDP failed", zap.String("src", src.String()), zap.String("dst", dst.String()), zap.String("error",err.Error()))
 	}else{
 		logger.Info("Handle UDP successful", zap.String("srcAddr", src.String()), zap.String("dstAddr", dst.String()), zap.ByteString("msg", data))
 	}
 
-	//if _, err := conn.WriteTo(data, src); err != nil{
-	//	logger.Error("Handle UDP failed", zap.String("srcAddr", src.String()), zap.String("dstAddr", dst.String()))
-	//}else{
-	//	logger.Info("Handle UDP successful", zap.String("srcAddr", src.String()), zap.String("dstAddr", dst.String()), zap.ByteString("msg", data))
-	//}
 }
 
 
