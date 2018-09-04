@@ -42,6 +42,7 @@ type ServerConfig struct{
 type ShadowsocksConfig struct{
 	ListenAddr 		string          `yaml:"listen-addr"`
 	UdpTimeout 		int			 	`yaml:"udp-timeout"`
+	TcpTimeout 		int			 	`yaml:"tcp-timeout"`
 	PacList   		[]string       	`yaml:"pac-list"`
 	Servers   		[]ServerConfig 	`yaml:"servers"`
 }

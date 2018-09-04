@@ -6,6 +6,7 @@ dns:
     - "8.8.4.4"
 shadowsocks:
   listen-addr: "127.0.0.1:909"
+  tcp-timeout: 240
   udp-timeout: 120
   pac-list:
     - "gfw-list.txt"

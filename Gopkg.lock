@@ -27,7 +27,8 @@
   packages = [
     "core",
     "shadowaead",
-    "shadowstream"
+    "shadowstream",
+    "socks"
   ]
   revision = "8f3c47fc33218e7f547bd95e90269a30f7cbbed7"
   version = "v0.0.11"
@@ -98,6 +99,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "9d034f612ea6a828ed57a370c48a5f8c3148e92a8322f87787e71e74924a905b"
+  inputs-digest = "251bf632877c7ca1752d48ad6cadc16aa49fefd089f3081f791922a2ea936d19"
   solver-name = "gps-cdcl"
   solver-version = 1

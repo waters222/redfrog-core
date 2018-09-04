@@ -20,6 +20,12 @@ const (
 	ipv6Regex = "^\\[(.+)\\]\\:([0-9]+)$"
 )
 
+const (
+	ShadowSocksAtypIPv4       = 1
+	ShadowSocksAtypDomainName = 3
+	ShadowSocksAtypIPv6       = 4
+)
+
 func CheckIPFamily(addr string) (ret bool, err error) {
 	var re *regexp.Regexp
 	if re , err = regexp.Compile(ipv4Regex); err != nil{
@@ -46,27 +52,38 @@ func CheckIPFamily(addr string) (ret bool, err error) {
 
 
 func ParseAddr(addr string, isIpV6 bool) (ip net.IP, port int, err error){
-	var re *regexp.Regexp
-	regexSelection := ipv4Regex
-	if isIpV6 {
-		regexSelection = ipv6Regex
-	}
-	if re , err = regexp.Compile(regexSelection); err != nil{
-		err = errors.Wrap(err, "Compile ip regex failed")
+	var hostStr string
+	var portStr string
+	if hostStr, portStr, err = net.SplitHostPort(addr); err != nil{
+
 		return
 	}
-	if matches := re.FindAllStringSubmatch(addr, -1); len(matches) == 0 && len(matches[0]) != 3{
-		err = errors.New(fmt.Sprintf("Invalid ip address %s", addr))
+	var portnum uint64
+	if portnum, err = strconv.ParseUint(portStr, 10, 16); err != nil{
+		err = errors.Wrap(err, "Port format invalid")
+		return
+	}
+	port = int(portnum)
+
+	ip = net.ParseIP(hostStr)
+	if ip == nil{
+		err = errors.New("IP format invalid")
+		return
+	}
+	if isIpV6{
+		ip = ip.To16()
+		if ip == nil{
+			err = errors.New("Its not ipv6 address")
+			return
+		}
 	}else{
-		var portTemp uint64
-		if ip = net.ParseIP(matches[0][1]); ip == nil{
-			err = errors.New(fmt.Sprintf("Invalid ip address: %s", matches[0][1]))
-		}else if portTemp, err = strconv.ParseUint(matches[0][2], 10, 32); err != nil{
-			err = errors.New(fmt.Sprintf("Port parse failed: %s", matches[0][2]))
-		}else{
-			port = int(portTemp)
+		ip = ip.To4()
+		if ip == nil{
+			err = errors.New("Its not ipv4 address")
+			return
 		}
 	}
+
 
 	return
 }
@@ -150,6 +167,8 @@ func ListenTransparentTCP(addr string, isIPv6 bool) (ln net.Listener, err error)
 }
 
 func ListenTransparentUDP(addr string, isIPv6 bool) (ln *net.UDPConn, err error){
+
+
 	socketType := syscall.AF_INET
 	if isIPv6 {
 		socketType = syscall.AF_INET6
@@ -253,7 +272,10 @@ func ReadFromTransparentUDP(conn *net.UDPConn, b []byte, oob []byte) (len int, s
 	return
 }
 
-func DialTransparentUDP(addr *net.UDPAddr, isIPv6 bool) (ln *net.UDPConn, err error){
+func DialTransparentUDP(addr *net.UDPAddr) (ln *net.UDPConn, err error){
+
+	isIPv6 := addr.IP.To4() == nil
+
 	socketType := syscall.AF_INET
 	if isIPv6 {
 		socketType = syscall.AF_INET6
@@ -301,4 +323,35 @@ func DialTransparentUDP(addr *net.UDPAddr, isIPv6 bool) (ln *net.UDPConn, err er
 	}
 
 	return
+}
+
+func ConvertShadowSocksAddr(addr string)([]byte, error) {
+	var ret []byte
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil{
+		return nil, err
+	}
+	ip := net.ParseIP(host)
+	if ip == nil{
+		return nil, errors.New("IP format invalid")
+	}
+	if ipv4 := ip.To4(); ipv4 != nil{
+		ret = make([]byte, 1 + net.IPv4len + 2)
+		ret[0] = ShadowSocksAtypIPv4
+		copy(ret[1:], ipv4)
+	}else {
+		ret = make([]byte, 1 + net.IPv6len + 2)
+		ret[0] = ShadowSocksAtypIPv6
+		copy(ret[1:], ip)
+	}
+	var hostPort uint64
+
+	if hostPort, err = strconv.ParseUint(port, 10, 16); err != nil{
+		return nil, errors.Wrap(err, "Port number format invalid")
+	}
+
+	ret[len(ret)-2], ret[len(ret)-1] = byte(hostPort>>8), byte(hostPort)
+
+	return ret, nil
+
 }

@@ -298,7 +298,7 @@ func listenUdp(addr string) (ln *net.UDPConn, err error){
 func handleUdp(src *net.UDPAddr, dst *net.UDPAddr, data []byte){
 	logger := log.GetLogger()
 
-	conn, err := network.DialTransparentUDP(dst, false)
+	conn, err := network.DialTransparentUDP(dst)
 	if err != nil{
 		logger.Error("Can not create udp conn", zap.String("error", err.Error()))
 		return
