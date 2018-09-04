@@ -94,7 +94,7 @@ func computeUDPKey(src *net.UDPAddr, dst *net.UDPAddr) string{
 }
 
 
-func InitProxyBackend(config config.ServerConfig, tcpTimeout int, udpTimeout int) (ret *proxyBackend, err error){
+func CreateProxyBackend(config config.ServerConfig, tcpTimeout int, udpTimeout int) (ret *proxyBackend, err error){
 
 	ret = &proxyBackend{}
 	ret.tcpTimeout_ = time.Second * time.Duration(tcpTimeout)
