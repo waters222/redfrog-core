@@ -26,8 +26,8 @@ type proxyBackend struct{
 }
 
 type relayDataRes struct {
-	N   int64
-	Err error
+	outboundSize int64
+	Err          error
 }
 
 
@@ -107,9 +107,9 @@ func CreateProxyBackend(config config.RemoteServerConfig, tcpTimeout int, udpTim
 		return
 	}
 	if isIPv6 {
-		ret.networkType_ = "tcp4"
-	}else{
 		ret.networkType_ = "tcp6"
+	}else{
+		ret.networkType_ = "tcp4"
 	}
 	if ip, port, ee := network.ParseAddr(config.RemoteServer, isIPv6); ee != nil{
 		err = errors.Wrap(ee, "Parse IPv4 failed")
@@ -143,17 +143,19 @@ func (c *proxyBackend) createTCPConn() (conn net.Conn, err error){
 
 }
 
-func (c *proxyBackend) RelayTCPData(src net.Conn) (int64, int64, error){
-	defer src.Close()
+func (c *proxyBackend) RelayTCPData(src net.Conn) (inboundSize int64, outboundSize int64, err error){
+	logger := log.GetLogger()
 
-	originDst, err := network.ConvertShadowSocksAddr(src.LocalAddr().String())
-	if err != nil{
-		return 0, 0, errors.Wrap(err, "Parse origin dst failed")
+	var originDst []byte
+	if originDst, err = network.ConvertShadowSocksAddr(src.LocalAddr().String()); err != nil{
+		err = errors.Wrap(err, "Parse origin dst failed")
+		return
 	}
 
-	dst, err := c.createTCPConn()
-	if err != nil{
-		return 0, 0, errors.Wrap(err,"Create remote conn failed")
+	var dst net.Conn
+	if dst, err = c.createTCPConn(); err != nil{
+		err = errors.Wrap(err, "Create remote conn failed")
+		return
 	}
 	defer dst.Close()
 
@@ -162,19 +164,20 @@ func (c *proxyBackend) RelayTCPData(src net.Conn) (int64, int64, error){
 	src.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
 
 	if _, err = dst.Write(originDst); err != nil{
-		return 0, 0, errors.Wrap(err, "Write to remote server failed")
+		err = errors.Wrap(err, "Write to remote server failed")
+		return
 	}
-
 	ch := make(chan relayDataRes)
 
 	go func() {
-		n, err := io.Copy(dst, src)
+		res := relayDataRes{}
+		res.outboundSize, res.Err = io.Copy(dst, src)
 		dst.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 		src.SetDeadline(time.Now()) // wake up the other goroutine blocking on left
-		ch <- relayDataRes{n, err}
+		ch <- res
 	}()
 
-	n, err := io.Copy(src, dst)
+	inboundSize, err = io.Copy(src, dst)
 	dst.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 	src.SetDeadline(time.Now()) // wake up the other goroutine blocking on left
 	rs := <-ch
@@ -183,7 +186,8 @@ func (c *proxyBackend) RelayTCPData(src net.Conn) (int64, int64, error){
 		err = rs.Err
 	}
 
-	return n, rs.N, err
+	outboundSize = rs.outboundSize
+	return
 }
 
 func (c *proxyBackend) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, leakyBuffer *common.LeakyBuffer, data *bytes.Buffer, dataLen int) error{

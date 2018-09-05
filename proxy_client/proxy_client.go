@@ -8,7 +8,6 @@ import (
 	"github.com/weishi258/redfrog-core/log"
 	"github.com/weishi258/redfrog-core/network"
 	"go.uber.org/zap"
-	"math/rand"
 	"net"
 )
 
@@ -19,6 +18,7 @@ type ProxyClient struct {
 
 	udpBuffer_    			*common.LeakyBuffer
 	udpOOBBuffer_ 			*common.LeakyBuffer
+	addr					string
 
 }
 
@@ -26,6 +26,7 @@ func StartProxyClient(config config.ShadowsocksConfig) (*ProxyClient, error){
 	logger := log.GetLogger()
 
 	ret := &ProxyClient{}
+	ret.addr = config.ListenAddr
 	ret.backends_ = make([]*proxyBackend, 0)
 	for _, backendConfig := range config.Servers{
 		if backend, err := CreateProxyBackend(backendConfig, config.TcpTimeout, config.UdpTimeout); err != nil{
@@ -72,7 +73,8 @@ func (c *ProxyClient)getBackendProxy(isUDP bool) *proxyBackend{
 			if length == 1{
 				return c.backends_[0]
 			}else{
-				return c.backends_[rand.Int31n(int32(length))]
+				//return c.backends_[rand.Int31n(int32(length))]
+				return c.backends_[0]
 			}
 		}else{
 			// need to fix this, need an global nat table
@@ -85,7 +87,7 @@ func (c *ProxyClient)getBackendProxy(isUDP bool) *proxyBackend{
 
 func (c *ProxyClient)startListenTCP(){
 	logger := log.GetLogger()
-	logger.Info("TCP start listening")
+	logger.Info("TCP start listening", zap.String("addr", c.addr))
 	for{
 		if conn, err := c.tcpListener.Accept(); err != nil{
 			if err.(*net.OpError).Err.Error() != "use of closed network connection"{
@@ -95,25 +97,32 @@ func (c *ProxyClient)startListenTCP(){
 			}
 
 		}else{
-			if backendProxy := c.getBackendProxy(false); backendProxy == nil{
-				logger.Error("Can not get backend proxy")
-				conn.Close()
-			}else{
-				go func(){
-					if outboundSize, inboundSize, err := backendProxy.RelayTCPData(conn); err != nil{
-						if err, ok := err.(net.Error); ok && err.Timeout(){
-							// do nothing for timeout
-						}else{
-							logger.Error("Relay TCP failed", zap.String("error", err.Error()))
-						}
-					}else{
-						logger.Debug("Relay TCP successful", zap.Int64("outbound", outboundSize), zap.Int64("inbound", inboundSize))
-					}
-				}()
-			}
+			go c.handleTCP(conn)
 		}
 	}
-	logger.Info("TCP stop listening")
+	logger.Info("TCP stop listening", zap.String("addr", c.addr))
+}
+
+func (c *ProxyClient)handleTCP(conn net.Conn){
+	logger := log.GetLogger()
+
+	logger.Debug("handle tcp ")
+	defer conn.Close()
+
+	if backendProxy := c.getBackendProxy(false); backendProxy == nil{
+		logger.Error("Can not get backend proxy")
+	}else{
+
+		if outboundSize, inboundSize, err := backendProxy.RelayTCPData(conn); err != nil{
+			if ee, ok := err.(net.Error); ok && ee.Timeout(){
+				// do nothing for timeout
+			}else{
+				logger.Error("Relay TCP failed", zap.String("error", err.Error()))
+			}
+		}else{
+			logger.Debug("Relay TCP successful", zap.Int64("outbound", outboundSize), zap.Int64("inbound", inboundSize))
+		}
+	}
 }
 
 func (c *ProxyClient)handleUDP(buffer *bytes.Buffer, oob *bytes.Buffer, srcAddr *net.UDPAddr, dataLen int, oobLen int){
@@ -137,7 +146,7 @@ func (c *ProxyClient)handleUDP(buffer *bytes.Buffer, oob *bytes.Buffer, srcAddr 
 
 func (c *ProxyClient)startListenUDP(){
 	logger := log.GetLogger()
-	logger.Info("UDP start listening")
+	logger.Info("UDP start listening", zap.String("addr", c.addr))
 	for{
 		buffer := c.udpBuffer_.Get()
 		oob := c.udpOOBBuffer_.Get()
@@ -156,7 +165,7 @@ func (c *ProxyClient)startListenUDP(){
 		}
 
 	}
-	logger.Info("UDP stop listening")
+	logger.Info("UDP stop listening", zap.String("addr", c.addr))
 }
 
 func (c *ProxyClient)Stop(){

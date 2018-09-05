@@ -49,6 +49,7 @@ func main(){
 	var addr string
 	var msg 	string
 	var repeatTime int
+	var bTransparent bool
 	var err error
 
 	// parse parameters
@@ -58,8 +59,9 @@ func main(){
 	flag.StringVar(&addr, "addr", "", "addr")
 	flag.StringVar(&msg, "msg", "hello world", "send msg")
 	flag.IntVar(&repeatTime, "r", 0, "repeat time in second")
-	flag.IntVar(&CONN_DEADLINE, "timeout", 10, "timeout")
+	flag.IntVar(&CONN_DEADLINE, "timeout", 60, "timeout")
 	flag.StringVar(&logLevel, "l", "info", "log level")
+	flag.BoolVar(&bTransparent, "t", false, "transparent")
 	flag.Parse()
 
 	logger := log.InitLogger(logLevel, false)
@@ -95,7 +97,7 @@ func main(){
 
 	}else if mode == "server"{
 		logger.Info("Running as server mode", zap.String("addr", addr), zap.Int("timeout", CONN_DEADLINE))
-		if tcpListen, err = listenTcp(addr); err != nil{
+		if tcpListen, err = listenTcp(addr, bTransparent); err != nil{
 			logger.Error("Listen TCP failed", zap.String("error", err.Error()))
 			return
 		}
@@ -104,7 +106,7 @@ func main(){
 			tcpListen.Close()
 			logger.Info("TCP listen closed")
 		}()
-		if udpListen, err = listenUdp(addr); err != nil{
+		if udpListen, err = listenUdp(addr, bTransparent); err != nil{
 			logger.Error("Listen UDP failed", zap.String("error", err.Error()))
 			return
 		}
@@ -144,9 +146,9 @@ func runClient(addr string, msg string){
 	if err = writeTcp(addr, msg); err != nil{
 		logger.Error("TCP Client failed", zap.String("error", err.Error()))
 	}
-	if err = writeUdp(addr, msg); err != nil{
-		logger.Error("UDP Client failed", zap.String("error", err.Error()))
-	}
+	//if err = writeUdp(addr, msg); err != nil{
+	//	logger.Error("UDP Client failed", zap.String("error", err.Error()))
+	//}
 }
 func writeTcp(addr string, msg string) (err error){
 	logger := log.GetLogger()
@@ -227,12 +229,19 @@ func writeUdp(addr string, msg string) (err error){
 }
 
 
-func listenTcp(addr string) (ln net.Listener, err error){
+func listenTcp(addr string, bTransparent bool) (ln net.Listener, err error){
 	logger := log.GetLogger()
 
-	if ln, err = network.ListenTransparentTCP(addr, false); err != nil{
-		return
+	if bTransparent{
+		if ln, err = network.ListenTransparentTCP(addr, false); err != nil{
+			return
+		}
+	}else{
+		if ln, err = net.Listen("tcp", addr); err != nil{
+			return
+		}
 	}
+
 
 	go func(){
 		logger.Info("Listen TCP successful", zap.String("addr", addr))
@@ -275,12 +284,25 @@ func handleTcpConn(conn net.Conn){
 	}
 }
 
-func listenUdp(addr string) (ln *net.UDPConn, err error){
+func listenUdp(addr string, bTransparent bool) (ln *net.UDPConn, err error){
 	logger := log.GetLogger()
+	if bTransparent{
+		if ln, err = network.ListenTransparentUDP(addr, false); err != nil{
+			return
+		}
+	}else{
+		var addrTemp *net.UDPAddr
+		if addrTemp, err = net.ResolveUDPAddr("udp", addr); err != nil{
+			err = errors.Wrap(err, "Resolve UDP failed")
+			return
+		}else{
+			if ln, err = net.ListenUDP("udp", addrTemp); err != nil{
+				return
+			}
+		}
 
-	if ln, err = network.ListenTransparentUDP(addr, false); err != nil{
-		return
 	}
+
 	go func(){
 		logger.Info("Listen UDP successful", zap.String("addr", addr))
 		for{
@@ -289,20 +311,32 @@ func listenUdp(addr string) (ln *net.UDPConn, err error){
 			if dataLen, oobLen, _, srcAddr, err := ln.ReadMsgUDP(udpBuffer, oob); err != nil{
 				logger.Error("Read from udp failed", zap.String("error", err.Error()))
 			}else{
-				if dstAddr, err := network.ExtractOrigDstFromUDP(oobLen, oob); err != nil{
-					logger.Error("Extract udp original dst failed", zap.String("error", err.Error()))
+				if bTransparent{
+					if dstAddr, err := network.ExtractOrigDstFromUDP(oobLen, oob); err != nil{
+						logger.Error("Extract udp original dst failed", zap.String("error", err.Error()))
+					}else{
+						go handleUdpTransparent(srcAddr, dstAddr, udpBuffer[:dataLen])
+					}
 				}else{
-					go handleUdp(srcAddr, dstAddr, udpBuffer[:dataLen])
+					go handleUDP(ln, srcAddr, udpBuffer[:dataLen])
 				}
+
 			}
 		}
 	}()
 	return
 }
 
-func handleUdp(src *net.UDPAddr, dst *net.UDPAddr, data []byte){
+func handleUDP(ln *net.UDPConn, src *net.UDPAddr, data []byte){
 	logger := log.GetLogger()
-
+	if _, err := ln.WriteTo(data, src); err != nil{
+		logger.Error("Handle UDP failed", zap.String("src", src.String()),  zap.String("error",err.Error()))
+	}else{
+		logger.Info("Handle UDP successful", zap.String("srcAddr", src.String()),  zap.ByteString("msg", data))
+	}
+}
+func handleUdpTransparent(src *net.UDPAddr, dst *net.UDPAddr, data []byte){
+	logger := log.GetLogger()
 	conn, err := network.DialTransparentUDP(dst)
 	if err != nil{
 		logger.Error("Can not create udp conn", zap.String("error", err.Error()))

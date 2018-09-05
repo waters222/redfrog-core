@@ -1,18 +1,18 @@
 dns:
-  listen-addr: "127.0.0.1:5300"
+  listen-addr: "0.0.0.0:5300"
   local-resolver:
     - "114.114.114.114"
   proxy-resolver:
     - "8.8.4.4"
 shadowsocks:
-  listen-addr: "127.0.0.1:909"
+  listen-addr: "0.0.0.0:9090"
   tcp-timeout: 240
   udp-timeout: 120
   pac-list:
     - "gfw-list.txt"
     - "gfw-list.txt"
   servers:
-    - remote-server: "146.71.79.80:8445"
+    - remote-server: "10.0.0.51:10000"
       crypt: "AEAD_CHACHA20_POLY1305"
       Password: "123321A"
       kcptun:
