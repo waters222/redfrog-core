@@ -76,13 +76,30 @@ func main(){
 	}()
 
 	// parse config
-	var config ServerConfig
+	var config ServerSwarmConfig
 	if config, err = ParseServerConfig(configFile); err != nil{
 		logger.Error("Read config file failed", zap.String("file", configFile), zap.String("error", err.Error()))
 		return
 	}else{
 		logger.Info("Read config file successful", zap.String("file", configFile))
 	}
+	logger.Info("Server config total", zap.Int("count", len(config.Servers)))
+	servers := make([]*ProxyServer, 0)
+	for _, configEntry := range config.Servers{
+		if server, err := StartProxyServer(configEntry); err != nil{
+			logger.Error("Start proxy server failed", zap.String("error",err.Error()))
+		}else{
+			servers = append(servers, server)
+		}
+	}
+	if len(servers) == 0{
+		return
+	}
+	defer func(){
+		for _, server := range servers{
+			server.Stop()
+		}
+	}()
 
 
 	logger.Info("RefFrog server is up and running")

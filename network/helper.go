@@ -21,6 +21,11 @@ const (
 )
 
 const (
+	SOL_IP = 0
+	IP_TRANSPARENT = 0x13
+	IP_RECVORIGDSTADDR = 0x14
+)
+const (
 	ShadowSocksAtypIPv4       = 1
 	ShadowSocksAtypDomainName = 3
 	ShadowSocksAtypIPv6       = 4
@@ -131,7 +136,7 @@ func ListenTransparentTCP(addr string, isIPv6 bool) (ln net.Listener, err error)
 	}
 	defer syscall.Close(socketFD)
 
-	if err = syscall.SetsockoptInt(socketFD, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil{
+	if err = syscall.SetsockoptInt(socketFD, SOL_IP, IP_TRANSPARENT, 1); err != nil{
 		err = errors.Wrap(err, "Set sockopt IP_TRANSPARENT failed")
 		return
 	}
@@ -181,11 +186,11 @@ func ListenTransparentUDP(addr string, isIPv6 bool) (ln *net.UDPConn, err error)
 	}
 	defer syscall.Close(socketFD)
 
-	if err = syscall.SetsockoptInt(socketFD, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil{
+	if err = syscall.SetsockoptInt(socketFD, SOL_IP, IP_TRANSPARENT, 1); err != nil{
 		err = errors.Wrap(err, "Set sockopt IP_TRANSPARENT failed")
 		return
 	}
-	if err = syscall.SetsockoptInt(socketFD, syscall.SOL_IP, syscall.IP_RECVORIGDSTADDR, 1); err != nil{
+	if err = syscall.SetsockoptInt(socketFD, SOL_IP, IP_RECVORIGDSTADDR, 1); err != nil{
 		err = errors.Wrap(err, "Set sockopt IP_RECVORIGDSTADDR failed")
 		return
 	}
@@ -231,7 +236,7 @@ func ExtractOrigDstFromUDP(oobLen int, oobBuffer []byte) (dst *net.UDPAddr, err 
 	}
 
 	for _, msg := range socketControlMsgs {
-		if msg.Header.Level == syscall.SOL_IP && msg.Header.Type == syscall.IP_RECVORIGDSTADDR {
+		if msg.Header.Level == SOL_IP && msg.Header.Type == IP_RECVORIGDSTADDR {
 			originalDstRaw := &syscall.RawSockaddrInet4{}
 			if err = binary.Read(bytes.NewReader(msg.Data), binary.LittleEndian, originalDstRaw); err != nil {
 				err = errors.Wrap(err, "Reading UDP original dst failed")
@@ -267,54 +272,6 @@ func ExtractOrigDstFromUDP(oobLen int, oobBuffer []byte) (dst *net.UDPAddr, err 
 
 	return
 }
-//func ReadFromTransparentUDP(conn *net.UDPConn, b []byte, oob []byte) (len int, src *net.UDPAddr, dst *net.UDPAddr, err error){
-//	//var oobn int
-//	//if len, oobn, _, src, err = conn.ReadMsgUDP(b, oob); err != nil{
-//	//	return
-//	//}
-//
-//	var socketControlMsgs []syscall.SocketControlMessage
-//	if socketControlMsgs, err = syscall.ParseSocketControlMessage(oob[:oobn]); err != nil{
-//		return
-//	}
-//
-//	for _, msg := range socketControlMsgs {
-//		if msg.Header.Level == syscall.SOL_IP && msg.Header.Type == syscall.IP_RECVORIGDSTADDR {
-//			originalDstRaw := &syscall.RawSockaddrInet4{}
-//			if err = binary.Read(bytes.NewReader(msg.Data), binary.LittleEndian, originalDstRaw); err != nil {
-//				err = errors.Wrap(err, "Reading UDP original dst failed")
-//				return
-//			}
-//			switch originalDstRaw.Family {
-//				case syscall.AF_INET:
-//					pp := (*syscall.RawSockaddrInet4)(unsafe.Pointer(originalDstRaw))
-//					p := (*[2]byte)(unsafe.Pointer(&pp.Port))
-//					dst = &net.UDPAddr{
-//						IP:   net.IPv4(pp.Addr[0], pp.Addr[1], pp.Addr[2], pp.Addr[3]),
-//						Port: int(p[0])<<8 + int(p[1]),
-//					}
-//
-//				case syscall.AF_INET6:
-//					pp := (*syscall.RawSockaddrInet6)(unsafe.Pointer(originalDstRaw))
-//					p := (*[2]byte)(unsafe.Pointer(&pp.Port))
-//					dst = &net.UDPAddr{
-//						IP:   net.IP(pp.Addr[:]),
-//						Port: int(p[0])<<8 + int(p[1]),
-//						Zone: strconv.Itoa(int(pp.Scope_id)),
-//					}
-//
-//				default:
-//					err = errors.Wrapf(err, fmt.Sprintf("UDP original dst is an unsupported network family: %v", originalDstRaw.Family))
-//					return
-//			}
-//		}
-//	}
-//	if dst == nil{
-//		err = errors.New("Can not obtain UDP origin dst")
-//	}
-//
-//	return
-//}
 
 func DialTransparentUDP(addr *net.UDPAddr) (ln *net.UDPConn, err error){
 
@@ -332,7 +289,7 @@ func DialTransparentUDP(addr *net.UDPAddr) (ln *net.UDPConn, err error){
 	}
 	defer syscall.Close(socketFD)
 
-	if err = syscall.SetsockoptInt(socketFD, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil{
+	if err = syscall.SetsockoptInt(socketFD, SOL_IP, IP_TRANSPARENT, 1); err != nil{
 		err = errors.Wrap(err, "Set sockopt IP_TRANSPARENT failed")
 		return
 	}

@@ -88,7 +88,12 @@ func (c *ProxyClient)startListenTCP(){
 	logger.Info("TCP start listening")
 	for{
 		if conn, err := c.tcpListener.Accept(); err != nil{
-			logger.Warn("Accept tcp conn failed", zap.String("error", err.Error()))
+			if err.(*net.OpError).Err.Error() != "use of closed network connection"{
+				logger.Error("Accept tcp conn failed", zap.String("error", err.Error()))
+			}else{
+				return
+			}
+
 		}else{
 			if backendProxy := c.getBackendProxy(false); backendProxy == nil{
 				logger.Error("Can not get backend proxy")
@@ -137,10 +142,15 @@ func (c *ProxyClient)startListenUDP(){
 		buffer := c.udpBuffer_.Get()
 		oob := c.udpOOBBuffer_.Get()
 		if dataLen, oobLen, _, srcAddr, err := c.udpListener.ReadMsgUDP(buffer.Bytes(), oob.Bytes()); err != nil{
-			logger.Error("Read from udp failed", zap.String("error", err.Error()))
-			// release buffer
 			c.udpBuffer_.Put(buffer)
 			c.udpOOBBuffer_.Put(oob)
+			if err.(*net.OpError).Err.Error() != "use of closed network connection"{
+				// release buffer
+				logger.Error("Read from udp failed", zap.String("error", err.Error()))
+			}else{
+				return
+			}
+
 		}else{
 			go c.handleUDP(buffer, oob, srcAddr, dataLen, oobLen)
 		}

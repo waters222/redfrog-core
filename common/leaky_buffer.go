@@ -10,6 +10,7 @@ type LeakyBuffer struct{
 func NewLeakyBuffer(poolSize int, bufferSize int) (ret *LeakyBuffer){
 	ret = &LeakyBuffer{}
 	ret.pool_ = make(chan*bytes.Buffer, poolSize)
+	ret.bufferSize_ = bufferSize
 	return
 }
 

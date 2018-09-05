@@ -125,19 +125,24 @@ func (c *ProxyServer)startTcpListener() (err error){
 		err = errors.Wrap(err, "TCP listen failed")
 		return
 	}
-	logger.Info("TCP Listener started")
+	logger.Info("TCP Listener started", zap.Int("port", c.port))
 	go func(){
 		for{
+
 			if conn, err := c.tcpListener_.Accept(); err != nil{
-				logger.Debug("Tcp accept failed", zap.String("error", err.Error()))
+				if err.(*net.OpError).Err.Error() != "use of closed network connection"{
+					logger.Error("Tcp accept failed", zap.String("error", err.Error()))
+				}else{
+					return
+				}
 			}else{
 				go c.handleTCP(conn)
 			}
 		}
-
+		logger.Info("TCP listen stopped", zap.Int("port", c.port))
 	}()
 
-	logger.Info("TCP listen stopped")
+
 	return
 }
 func (c *ProxyServer)handleTCP(conn net.Conn){
@@ -203,21 +208,27 @@ func (c *ProxyServer)startUDPListener() (err error){
 	}
 	c.udpListener_ = c.cipher.PacketConn(c.udpListener_)
 
-	logger.Info("UDP Listener started")
+	logger.Info("UDP Listener started", zap.Int("port", c.port))
 
 	go func(){
 		for{
 			buffer := c.udpLeakyBuffer.Get()
 			if dataLen, srcAddr, err := c.udpListener_.ReadFrom(buffer.Bytes()); err != nil{
 				c.udpLeakyBuffer.Put(buffer)
-				logger.Error("Read from udp failed", zap.String("error", err.Error()))
+				if err.(*net.OpError).Err.Error() != "use of closed network connection"{
+					logger.Error("Read from udp failed", zap.String("error", err.Error()))
+				}else{
+					return
+				}
+
 			}else{
 				go c.handleUDP(buffer, dataLen, srcAddr)
 			}
 		}
+		logger.Info("UDP listener stopped", zap.Int("port", c.port))
 	}()
 
-	logger.Info("UDP listener stopped")
+
 	return
 }
 
