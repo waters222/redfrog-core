@@ -3,11 +3,7 @@ package main
 import (
 	"flag"
 	. "github.com/weishi258/redfrog-core/config"
-	"github.com/weishi258/redfrog-core/dns_proxy"
 	"github.com/weishi258/redfrog-core/log"
-	"github.com/weishi258/redfrog-core/pac"
-	"github.com/weishi258/redfrog-core/proxy_client"
-	"github.com/weishi258/redfrog-core/routing"
 	"go.uber.org/zap"
 	"math/rand"
 	"os"
@@ -20,8 +16,8 @@ var Version string
 var BuildTime string
 
 var sigChan chan os.Signal
-
 func main(){
+
 
 	sigChan = make(chan os.Signal, 5)
 	done := make(chan bool)
@@ -63,7 +59,7 @@ func main(){
 
 	// print version
 	if printVer{
-		logger.Info("RedFrog",
+		logger.Info("RedFrog Server",
 			zap.String("Version", Version),
 			zap.String("BuildTime", BuildTime))
 		os.Exit(0)
@@ -80,8 +76,8 @@ func main(){
 	}()
 
 	// parse config
-	var config Config
-	if config, err = ParseClientConfig(configFile); err != nil{
+	var config ServerConfig
+	if config, err = ParseServerConfig(configFile); err != nil{
 		logger.Error("Read config file failed", zap.String("file", configFile), zap.String("error", err.Error()))
 		return
 	}else{
@@ -89,52 +85,13 @@ func main(){
 	}
 
 
-	// init routing mgr
-	var routingMgr *routing.RoutingMgr
-	if routingMgr, err = routing.StartRoutingMgr(); err != nil{
-		logger.Error("Init routing manager failed", zap.String("error", err.Error()))
-		return
-	}
-	defer routingMgr.Stop()
-
-
-	// init pac list
-	var pacListMgr *pac.PacListMgr
-	if pacListMgr, err = pac.StartPacListMgr(routingMgr); err != nil{
-		logger.Error("Start pac list manager failed", zap.String("error", err.Error()))
-	}
-	defer pacListMgr.Stop()
-	pacListMgr.ReadPacList(config.Shadowsocks.PacList)
-
-
-	// Start Dns Server
-
-	var dnsServer *dns_proxy.DnsServer
-	if dnsServer, err = dns_proxy.StartDnsServer(config.Dns, pacListMgr, routingMgr); err != nil{
-		logger.Error("Start dns_proxy server failed", zap.String("error", err.Error()))
-		return
-	}
-	defer dnsServer.Stop()
-
-
-	var proxyClient* proxy_client.ProxyClient
-	if proxyClient, err = proxy_client.StartProxyClient(config.Shadowsocks); err != nil{
-		logger.Error("Start proxy client failed", zap.String("error", err.Error()))
-		return
-	}
-	defer proxyClient.Stop()
-
-
-
-
-	logger.Info("RefFrog is up and running")
+	logger.Info("RefFrog server is up and running")
 	go func() {
 		sig := <-sigChan
 
-		logger.Debug("RefFrog caught signal for exit",
+		logger.Debug("RefFrog server caught signal for exit",
 			zap.Any("signal", sig))
 		done <- true
 	}()
 	<-done
-
 }

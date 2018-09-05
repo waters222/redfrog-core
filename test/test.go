@@ -215,7 +215,7 @@ func writeUdp(addr string, msg string) (err error){
 		logger.Error("Get udp response from server failed",zap.String("err", err.Error()))
 		return err
 	}else{
-		logger.Error("Get udp response from server successful",zap.String("addr", remoteAddr.String()))
+		logger.Info("Get udp response from server successful",zap.String("addr", remoteAddr.String()))
 		readLen = n
 	}
 	if !checkEqual(readBuffer, writeBuffer, readLen){

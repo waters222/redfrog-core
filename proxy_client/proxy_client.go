@@ -54,6 +54,7 @@ func StartProxyClient(config config.ShadowsocksConfig) (*ProxyClient, error){
 	ret.udpOOBBuffer_ = common.NewLeakyBuffer(common.UDP_OOB_POOL_SIZE, common.UDP_OOB_BUFFER_SIZE)
 
 	if ret.udpListener, err = network.ListenTransparentUDP(config.ListenAddr, isIPv6); err != nil{
+		ret.tcpListener.Close()
 		err = errors.Wrap(err, "UDP listen failed")
 		return nil, err
 	}
@@ -95,7 +96,11 @@ func (c *ProxyClient)startListenTCP(){
 			}else{
 				go func(){
 					if outboundSize, inboundSize, err := backendProxy.RelayTCPData(conn); err != nil{
-						logger.Error("Relay TCP failed", zap.String("error", err.Error()))
+						if err, ok := err.(net.Error); ok && err.Timeout(){
+							// do nothing for timeout
+						}else{
+							logger.Error("Relay TCP failed", zap.String("error", err.Error()))
+						}
 					}else{
 						logger.Debug("Relay TCP successful", zap.Int64("outbound", outboundSize), zap.Int64("inbound", inboundSize))
 					}

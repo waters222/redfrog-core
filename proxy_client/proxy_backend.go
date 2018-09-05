@@ -95,7 +95,7 @@ func computeUDPKey(src *net.UDPAddr, dst *net.UDPAddr) string{
 }
 
 
-func CreateProxyBackend(config config.ServerConfig, tcpTimeout int, udpTimeout int) (ret *proxyBackend, err error){
+func CreateProxyBackend(config config.RemoteServerConfig, tcpTimeout int, udpTimeout int) (ret *proxyBackend, err error){
 
 	ret = &proxyBackend{}
 	ret.tcpTimeout_ = time.Second * time.Duration(tcpTimeout)
@@ -158,8 +158,8 @@ func (c *proxyBackend) RelayTCPData(src net.Conn) (int64, int64, error){
 	defer dst.Close()
 
 	// set deadline timeout
-	dst.SetDeadline(time.Now().Add(c.tcpTimeout_))
-	src.SetDeadline(time.Now().Add(c.tcpTimeout_))
+	dst.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
+	src.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
 
 	if _, err = dst.Write(originDst); err != nil{
 		return 0, 0, errors.Wrap(err, "Write to remote server failed")
