@@ -87,7 +87,8 @@ func main(){
 		logger.Info("Read config file successful", zap.String("file", configFile))
 	}
 
-
+	// set random seed
+	rand.Seed(time.Now().Unix())
 
 	// init routing mgr
 	var routingMgr *routing.RoutingMgr
@@ -115,6 +116,7 @@ func main(){
 		return
 	}
 	defer dnsServer.Stop()
+
 
 
 

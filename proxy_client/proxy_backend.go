@@ -1,6 +1,7 @@
 package proxy_client
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/shadowsocks/go-shadowsocks2/core"
@@ -185,7 +186,7 @@ func (c *proxyBackend) RelayTCPData(src net.Conn) (int64, int64, error){
 	return n, rs.N, err
 }
 
-func (c *proxyBackend) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, data []byte) error{
+func (c *proxyBackend) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, leakyBuffer *common.LeakyBuffer, data *bytes.Buffer, dataLen int) error{
 	logger := log.GetLogger()
 
 	udpKey := computeUDPKey(srcAddr, dstAddr)
@@ -224,14 +225,34 @@ func (c *proxyBackend) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, 
 	}
 
 	// compose udp socks5 header
-	writeData := make([]byte, len(udpProxy.header_) + len(data))
-	copy(writeData, udpProxy.header_)
-	copy(writeData[len(udpProxy.header_):], data)
-	// set timeout for each send
 	udpProxy.dst_.SetReadDeadline(time.Now().Add(c.udpTimeout_))
-	// write to remote shadowsocks server
-	if _, err := udpProxy.dst_.WriteTo(writeData, dstAddr); err != nil{
-		return err
+
+	headerLen := len(udpProxy.header_)
+	totalLen := headerLen + dataLen
+
+	if totalLen > leakyBuffer.GetBufferSize(){
+		// too big for our leakybuffer
+		writeData := make([]byte, totalLen)
+		copy(writeData, udpProxy.header_)
+		copy(writeData[headerLen:], data.Bytes()[:dataLen])
+		// set timeout for each send
+		// write to remote shadowsocks server
+		if _, err := udpProxy.dst_.WriteTo(writeData, dstAddr); err != nil{
+			return err
+		}
+
+	}else{
+		// get leaky buffer
+		newBuffer := leakyBuffer.Get()
+		defer leakyBuffer.Put(newBuffer)
+
+		copy(newBuffer.Bytes(), udpProxy.header_)
+		copy(newBuffer.Bytes()[headerLen:], data.Bytes()[:dataLen])
+		// set timeout for each send
+		// write to remote shadowsocks server
+		if _, err := udpProxy.dst_.WriteTo(newBuffer.Bytes(), dstAddr); err != nil{
+			return err
+		}
 	}
 
 

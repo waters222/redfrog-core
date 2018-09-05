@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/weishi258/redfrog-core/common"
 	"github.com/weishi258/redfrog-core/log"
 	"github.com/weishi258/redfrog-core/network"
 	"go.uber.org/zap"
@@ -283,12 +284,16 @@ func listenUdp(addr string) (ln *net.UDPConn, err error){
 	go func(){
 		logger.Info("Listen UDP successful", zap.String("addr", addr))
 		for{
-			udpBuffer := make([]byte, 4096)
-			oob := make([]byte, 2048)
-			if dataLen, src, dst, err := network.ReadFromTransparentUDP(ln, udpBuffer, oob); err != nil{
-				logger.Debug("Read udp failed", zap.String("error", err.Error()))
+			udpBuffer := make([]byte, common.UDP_BUFFER_SIZE)
+			oob := make([]byte, common.UDP_OOB_BUFFER_SIZE)
+			if dataLen, oobLen, _, srcAddr, err := ln.ReadMsgUDP(udpBuffer, oob); err != nil{
+				logger.Error("Read from udp failed", zap.String("error", err.Error()))
 			}else{
-				go handleUdp(src, dst, udpBuffer[:dataLen])
+				if dstAddr, err := network.ExtractOrigDstFromUDP(oobLen, oob); err != nil{
+					logger.Error("Extract udp original dst failed", zap.String("error", err.Error()))
+				}else{
+					go handleUdp(srcAddr, dstAddr, udpBuffer[:dataLen])
+				}
 			}
 		}
 	}()
