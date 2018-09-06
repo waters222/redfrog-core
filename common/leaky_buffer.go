@@ -28,7 +28,6 @@ func (c *LeakyBuffer) Get() *bytes.Buffer {
 }
 
 func (c *LeakyBuffer) Put(buffer *bytes.Buffer){
-	buffer.Reset()
 	if buffer.Cap() > c.bufferSize_{
 		buffer = bytes.NewBuffer(make([]byte, c.bufferSize_))
 	}

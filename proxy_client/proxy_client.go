@@ -106,7 +106,6 @@ func (c *ProxyClient)startListenTCP(){
 func (c *ProxyClient)handleTCP(conn net.Conn){
 	logger := log.GetLogger()
 
-	logger.Debug("handle tcp ")
 	defer conn.Close()
 
 	if backendProxy := c.getBackendProxy(false); backendProxy == nil{
@@ -125,24 +124,7 @@ func (c *ProxyClient)handleTCP(conn net.Conn){
 	}
 }
 
-func (c *ProxyClient)handleUDP(buffer *bytes.Buffer, oob *bytes.Buffer, srcAddr *net.UDPAddr, dataLen int, oobLen int){
-	logger := log.GetLogger()
-	defer c.udpBuffer_.Put(buffer)
 
-	if dstAddr, err := network.ExtractOrigDstFromUDP(oobLen, oob.Bytes()); err != nil{
-		c.udpOOBBuffer_.Put(oob)
-		logger.Error("Failed to extract original dst from udp", zap.String("error", err.Error()))
-	}else{
-		c.udpOOBBuffer_.Put(oob)
-		if backendProxy := c.getBackendProxy(true); backendProxy == nil{
-			logger.Error("Can not get backend proxy")
-		}else if err = backendProxy.RelayUDPData(srcAddr, dstAddr, c.udpBuffer_, buffer, dataLen); err != nil{
-			logger.Error("Relay UDP failed", zap.String("error", err.Error()))
-		}
-	}
-
-
-}
 
 func (c *ProxyClient)startListenUDP(){
 	logger := log.GetLogger()
@@ -161,13 +143,29 @@ func (c *ProxyClient)startListenUDP(){
 			}
 
 		}else{
-			go c.handleUDP(buffer, oob, srcAddr, dataLen, oobLen)
+
+			if dstAddr, err := network.ExtractOrigDstFromUDP(oobLen, oob.Bytes()); err != nil{
+				logger.Error("Failed to extract original dst from udp", zap.String("error", err.Error()))
+			}else{
+				go c.handleUDP(buffer, srcAddr, dstAddr, dataLen)
+			}
+			c.udpOOBBuffer_.Put(oob)
 		}
 
 	}
 	logger.Info("UDP stop listening", zap.String("addr", c.addr))
 }
+func (c *ProxyClient)handleUDP(buffer *bytes.Buffer, srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, dataLen int){
+	logger := log.GetLogger()
 
+	if backendProxy := c.getBackendProxy(true); backendProxy == nil{
+		logger.Error("Can not get backend proxy")
+	}else if err := backendProxy.RelayUDPData(srcAddr, dstAddr, c.udpBuffer_, buffer, dataLen); err != nil {
+		logger.Error("Relay UDP failed", zap.String("error", err.Error()))
+	}
+
+
+}
 func (c *ProxyClient)Stop(){
 	logger := log.GetLogger()
 	if err := c.tcpListener.Close(); err != nil{

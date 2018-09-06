@@ -146,9 +146,9 @@ func runClient(addr string, msg string){
 	if err = writeTcp(addr, msg); err != nil{
 		logger.Error("TCP Client failed", zap.String("error", err.Error()))
 	}
-	//if err = writeUdp(addr, msg); err != nil{
-	//	logger.Error("UDP Client failed", zap.String("error", err.Error()))
-	//}
+	if err = writeUdp(addr, msg); err != nil{
+		logger.Error("UDP Client failed", zap.String("error", err.Error()))
+	}
 }
 func writeTcp(addr string, msg string) (err error){
 	logger := log.GetLogger()
@@ -234,6 +234,7 @@ func listenTcp(addr string, bTransparent bool) (ln net.Listener, err error){
 
 	if bTransparent{
 		if ln, err = network.ListenTransparentTCP(addr, false); err != nil{
+			err = errors.Wrap(err, "Listen TCP failed")
 			return
 		}
 	}else{
@@ -247,7 +248,12 @@ func listenTcp(addr string, bTransparent bool) (ln net.Listener, err error){
 		logger.Info("Listen TCP successful", zap.String("addr", addr))
 		for{
 			if conn, err := ln.Accept(); err != nil{
-				logger.Debug("Accept tcp conn failed", zap.String("error", err.Error()))
+				if err.(*net.OpError).Err.Error() != "use of closed network connection"{
+					logger.Error("Accept tcp conn failed", zap.String("error", err.Error()))
+				}else{
+					return
+				}
+
 			}else{
 				go handleTcpConn(conn)
 			}
@@ -309,7 +315,12 @@ func listenUdp(addr string, bTransparent bool) (ln *net.UDPConn, err error){
 			udpBuffer := make([]byte, common.UDP_BUFFER_SIZE)
 			oob := make([]byte, common.UDP_OOB_BUFFER_SIZE)
 			if dataLen, oobLen, _, srcAddr, err := ln.ReadMsgUDP(udpBuffer, oob); err != nil{
-				logger.Error("Read from udp failed", zap.String("error", err.Error()))
+				if err.(*net.OpError).Err.Error() != "use of closed network connection"{
+					logger.Error("Read from udp failed", zap.String("error", err.Error()))
+				}else{
+					return
+				}
+
 			}else{
 				if bTransparent{
 					if dstAddr, err := network.ExtractOrigDstFromUDP(oobLen, oob); err != nil{

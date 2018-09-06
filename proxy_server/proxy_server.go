@@ -65,10 +65,12 @@ func (c *udpNatMap)Del(key string)  {
 }
 
 
-func (c *udpNatMap)Add(key string, conn *net.UDPConn, header []byte){
+func (c *udpNatMap)Add(key string, conn *net.UDPConn, header []byte) (ret *udpNatMapEntry){
 	c.Lock()
 	defer c.Unlock()
-	c.entries[key] = &udpNatMapEntry{conn, header}
+	ret = &udpNatMapEntry{conn, header}
+	c.entries[key] = ret
+	return
 }
 
 
@@ -211,7 +213,7 @@ func (c *ProxyServer)startUDPListener() (err error){
 
 	logger.Info("UDP Listener started", zap.Int("port", c.port))
 
-	go c.startUDPListener()
+	go c.startUDPAccept()
 
 	return
 }
@@ -258,18 +260,18 @@ func (c *ProxyServer) handleUDP(buffer *bytes.Buffer, dataLen int, srcAddr net.A
 			logger.Error("UDP open dial failed", zap.String("error", err.Error()))
 			return
 		}
-		c.udpNatMap_.Add(dstAddr.String(), remoteConn, dstAddrBytes)
-		go c.copyFromRemote(remoteConn, dstAddr, dstAddrBytes)
+		remoteConnEntry = c.udpNatMap_.Add(dstAddr.String(), remoteConn, dstAddrBytes)
+		go c.copyFromRemote(remoteConn, dstAddr, srcAddr, dstAddrBytes)
 	}
 
 	remoteConnEntry.conn.SetReadDeadline(time.Now().Add(c.udpTimeout_))
-	_, err = remoteConnEntry.conn.WriteTo(buffer.Bytes()[len(dstAddrBytes):dataLen], dstAddr)
+	_, err = remoteConnEntry.conn.Write(buffer.Bytes()[len(dstAddrBytes):dataLen])
 	if err != nil {
 		logger.Error("UDP write to remote failed", zap.String("error", err.Error()))
 	}
 }
 
-func (c *ProxyServer)copyFromRemote(remoteConn *net.UDPConn, dstAddr *net.UDPAddr, dstAddrBytes []byte){
+func (c *ProxyServer)copyFromRemote(remoteConn *net.UDPConn, dstAddr *net.UDPAddr, srcAddr net.Addr, dstAddrBytes []byte){
 	logger := log.GetLogger()
 
 	remoteBuffer := c.udpLeakyBuffer.Get()
@@ -289,9 +291,9 @@ func (c *ProxyServer)copyFromRemote(remoteConn *net.UDPConn, dstAddr *net.UDPAdd
 		totalLen := dataLen + headerLen
 		if totalLen > common.UDP_BUFFER_SIZE{
 			writeBuffer := make([]byte, totalLen)
-			copy(writeBuffer, dstAddrBytes)
-			copy(writeBuffer[headerLen:], remoteBuffer.Bytes()[:dataLen])
-			if _, err = c.udpListener_.WriteTo(writeBuffer, dstAddr); err != nil{
+			copy(writeBuffer[:headerLen], dstAddrBytes)
+			copy(writeBuffer[headerLen:totalLen], remoteBuffer.Bytes()[:dataLen])
+			if _, err = c.udpListener_.WriteTo(writeBuffer, srcAddr); err != nil{
 				logger.Error("Write back failed", zap.String("error", err.Error()))
 				return
 			}
@@ -299,9 +301,13 @@ func (c *ProxyServer)copyFromRemote(remoteConn *net.UDPConn, dstAddr *net.UDPAdd
 			writeBuffer := c.udpLeakyBuffer.Get()
 			copy(writeBuffer.Bytes(), dstAddrBytes)
 			copy(writeBuffer.Bytes()[headerLen:], remoteBuffer.Bytes()[:dataLen])
-			if _, err = c.udpListener_.WriteTo(writeBuffer.Bytes(), dstAddr); err != nil{
+			if _, err = c.udpListener_.WriteTo(writeBuffer.Bytes()[:totalLen], srcAddr); err != nil{
+				c.udpLeakyBuffer.Put(writeBuffer)
 				logger.Error("Write back failed", zap.String("error", err.Error()))
 				return
+			}else{
+				logger.Debug("Write back to succesufl", zap.String("addr", srcAddr.String()))
+				c.udpLeakyBuffer.Put(writeBuffer)
 			}
 		}
 	}
