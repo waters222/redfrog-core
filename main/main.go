@@ -107,16 +107,6 @@ func main(){
 	pacListMgr.ReadPacList(config.Shadowsocks.PacList)
 
 
-	// Start Dns Server
-
-	var dnsServer *dns_proxy.DnsServer
-	if dnsServer, err = dns_proxy.StartDnsServer(config.Dns, pacListMgr, routingMgr); err != nil{
-		logger.Error("Start dns_proxy server failed", zap.String("error", err.Error()))
-		return
-	}
-	defer dnsServer.Stop()
-
-
 	var proxyClient* proxy_client.ProxyClient
 	if proxyClient, err = proxy_client.StartProxyClient(config.Shadowsocks); err != nil{
 		logger.Error("Start proxy client failed", zap.String("error", err.Error()))
@@ -124,6 +114,14 @@ func main(){
 	}
 	defer proxyClient.Stop()
 
+	// Start Dns Server
+
+	var dnsServer *dns_proxy.DnsServer
+	if dnsServer, err = dns_proxy.StartDnsServer(config.Dns, pacListMgr, routingMgr, proxyClient); err != nil{
+		logger.Error("Start dns_proxy server failed", zap.String("error", err.Error()))
+		return
+	}
+	defer dnsServer.Stop()
 
 
 

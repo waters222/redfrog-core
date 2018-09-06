@@ -9,6 +9,7 @@ import (
 	"github.com/weishi258/redfrog-core/network"
 	"go.uber.org/zap"
 	"net"
+	"time"
 )
 
 type ProxyClient struct {
@@ -90,11 +91,8 @@ func (c *ProxyClient)startListenTCP(){
 	logger.Info("TCP start listening", zap.String("addr", c.addr))
 	for{
 		if conn, err := c.tcpListener.Accept(); err != nil{
-			if err.(*net.OpError).Err.Error() != "use of closed network connection"{
-				logger.Error("Accept tcp conn failed", zap.String("error", err.Error()))
-			}else{
-				return
-			}
+			logger.Debug("Accept tcp conn failed", zap.String("error", err.Error()))
+			return
 
 		}else{
 			go c.handleTCP(conn)
@@ -135,13 +133,9 @@ func (c *ProxyClient)startListenUDP(){
 		if dataLen, oobLen, _, srcAddr, err := c.udpListener.ReadMsgUDP(buffer.Bytes(), oob.Bytes()); err != nil{
 			c.udpBuffer_.Put(buffer)
 			c.udpOOBBuffer_.Put(oob)
-			if err.(*net.OpError).Err.Error() != "use of closed network connection"{
-				// release buffer
-				logger.Error("Read from udp failed", zap.String("error", err.Error()))
-			}else{
-				return
-			}
 
+			logger.Debug("Read from udp failed", zap.String("error", err.Error()))
+			return
 		}else{
 
 			if dstAddr, err := network.ExtractOrigDstFromUDP(oobLen, oob.Bytes()); err != nil{
@@ -157,6 +151,7 @@ func (c *ProxyClient)startListenUDP(){
 }
 func (c *ProxyClient)handleUDP(buffer *bytes.Buffer, srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, dataLen int){
 	logger := log.GetLogger()
+	defer c.udpBuffer_.Put(buffer)
 
 	if backendProxy := c.getBackendProxy(true); backendProxy == nil{
 		logger.Error("Can not get backend proxy")
@@ -166,6 +161,15 @@ func (c *ProxyClient)handleUDP(buffer *bytes.Buffer, srcAddr *net.UDPAddr, dstAd
 
 
 }
+func (c * ProxyClient)ExchangeDNS(srcAddr string, dstAddr string, data []byte, dnsTimeout time.Duration) (response []byte, err error) {
+	if backendProxy := c.getBackendProxy(true); backendProxy == nil{
+		err = errors.New("Can not get backend proxy")
+	}else if response, err = backendProxy.RelayDNS(srcAddr, dstAddr, data, c.udpBuffer_, dnsTimeout); err != nil {
+		err = errors.Wrap(err, "Relay DNS query failed")
+	}
+	return
+}
+
 func (c *ProxyClient)Stop(){
 	logger := log.GetLogger()
 	if err := c.tcpListener.Close(); err != nil{

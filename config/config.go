@@ -11,7 +11,8 @@ import (
 type DnsConfig struct {
 	ListenAddr			string 		`yaml:"listen-addr"`
 	LocalResolver		[]string	`yaml:"local-resolver"`
-	ProxyResolver		[]string	`yaml:"proxy_client-resolver"`
+	ProxyResolver		[]string	`yaml:"proxy-resolver"`
+	DnsTimeout			int			`yaml:"dns-timeout"`
 
 }
 

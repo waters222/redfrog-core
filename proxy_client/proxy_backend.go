@@ -25,6 +25,36 @@ type proxyBackend struct{
 	tcpTimeout_  time.Duration
 	udpTimeout_  time.Duration
 	udpNatMap_   *udpNatMap
+	dnsNatMap_	 *dnsNatMap
+}
+
+type dnsNatMap struct {
+	sync.RWMutex
+	entries		map[string]net.PacketConn
+
+}
+
+func (c *dnsNatMap)Get(key string)net.PacketConn{
+	c.RLock()
+	defer c.RUnlock()
+	ret, ok := c.entries[key]
+	if ok{
+		return ret
+	}else{
+		return nil
+	}
+}
+
+func (c *dnsNatMap)Add(key string, conn net.PacketConn){
+	c.Lock()
+	defer c.Unlock()
+	c.entries[key] = conn
+}
+
+func (c *dnsNatMap)Del(key string){
+	c.Lock()
+	defer c.Unlock()
+	delete(c.entries, key)
 }
 
 type relayDataRes struct {
@@ -134,7 +164,7 @@ func CreateProxyBackend(config config.RemoteServerConfig, tcpTimeout int, udpTim
 	}
 
 	ret.udpNatMap_ = &udpNatMap{entries: make(map[string]*udpProxyEntry)}
-
+	ret.dnsNatMap_ = &dnsNatMap{entries: make(map[string]net.PacketConn)}
 	return
 }
 
@@ -207,7 +237,7 @@ func (c *proxyBackend) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, 
 	udpProxy := c.udpNatMap_.Get(udpKey)
 
 
-	logger.Debug("UDP relay ",zap.String("srcAddr", srcAddr.String()), zap.String("dstAddr", dstAddr.String()))
+	//logger.Debug("UDP relay ",zap.String("srcAddr", srcAddr.String()), zap.String("dstAddr", dstAddr.String()))
 	if udpProxy == nil{
 		dstConn, err := net.ListenPacket("udp", "")
 		if err != nil{
@@ -260,7 +290,6 @@ func (c *proxyBackend) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, 
 		// get leaky buffer
 		newBuffer := leakyBuffer.Get()
 		defer leakyBuffer.Put(newBuffer)
-		newBuffer.Len()
 		copy(newBuffer.Bytes(), udpProxy.header_)
 		copy(newBuffer.Bytes()[headerLen: ], data.Bytes()[:dataLen])
 		// set timeout for each send
@@ -272,4 +301,64 @@ func (c *proxyBackend) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, 
 
 
 	return nil
+}
+
+func (c *proxyBackend) RelayDNS(srcAddr string, dnsAddr string, data []byte, leakyBuffer *common.LeakyBuffer, dnsTimeout time.Duration) (response []byte, err error){
+	//logger := log.GetLogger()
+
+
+	addrBytes, err := network.ConvertShadowSocksAddr(dnsAddr)
+	if err != nil{
+		err = errors.Wrap(err, "DNS convert to shadowsocks addr failed")
+		return
+	}
+
+	dataLen := len(data)
+	addrLen := len(addrBytes)
+	totalLen := addrLen + dataLen
+
+	buffer := leakyBuffer.Get()
+	defer leakyBuffer.Put(buffer)
+
+	copy(buffer.Bytes(), addrBytes)
+	copy(buffer.Bytes()[addrLen:], data)
+
+
+
+	dstConn := c.dnsNatMap_.Get(srcAddr)
+	if dstConn == nil{
+		if dstConn, err = net.ListenPacket("udp", ""); err != nil{
+			err = errors.Wrap(err, "UDP proxy listen local failed")
+			return
+		}
+		dstConn = c.cipher_.PacketConn(dstConn)
+		c.dnsNatMap_.Add(srcAddr, dstConn)
+	}
+	defer func(){
+		c.dnsNatMap_.Del(srcAddr)
+		dstConn.Close()
+	}()
+
+	// set timeout for each send
+	// write to remote shadowsocks server
+
+	if _, err = dstConn.WriteTo(buffer.Bytes()[:totalLen], c.udpAddr); err != nil{
+		err = errors.Wrap(err, "Write to remote DNS failed")
+		return
+	}
+
+	dstConn.SetReadDeadline(time.Now().Add(dnsTimeout))
+	n, _, err := dstConn.ReadFrom(buffer.Bytes())
+	if err != nil{
+		return
+	}
+	if n <= addrLen{
+		err = errors.New("Read DNS query empty")
+		return
+	}
+	response = make([]byte, n)
+	copy(response, buffer.Bytes()[addrLen:n])
+
+	return
+
 }

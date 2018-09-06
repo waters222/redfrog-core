@@ -212,9 +212,9 @@ func (c * PacListMgr)CheckDomain(domain string) bool{
 	c.proxyList.mux.RUnlock()
 
 	for i := 0; i < len; i++{
-		if _, ok := proxyList[stubs[i]]; ok {
-			logger.Debug("Domain is in proxy_client list", zap.String("domain", domain))
-			return true
+		if blacked, ok := proxyList[stubs[i]]; ok {
+			logger.Debug("Domain is in proxy_client list", zap.String("domain", domain), zap.Bool("blacked", blacked))
+			return blacked
 		}
 	}
 

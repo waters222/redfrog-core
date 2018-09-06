@@ -1,9 +1,11 @@
 dns:
-  listen-addr: "0.0.0.0:5300"
+  listen-addr: "192.168.0.1:53"
+  dns-timeout: 10
   local-resolver:
     - "114.114.114.114"
   proxy-resolver:
-    - "8.8.4.4"
+    - "8.8.8.8"
+
 shadowsocks:
   listen-addr: "0.0.0.0:9090"
   tcp-timeout: 240

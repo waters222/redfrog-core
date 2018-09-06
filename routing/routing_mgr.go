@@ -1,13 +1,11 @@
 package routing
 
 import (
-	"github.com/weishi258/redfrog-core/log"
-	"sync"
-	"net"
-	"github.com/pkg/errors"
-	"fmt"
-	"go.uber.org/zap"
 	"github.com/weishi258/redfrog-core/common"
+	"github.com/weishi258/redfrog-core/log"
+	"go.uber.org/zap"
+	"net"
+	"sync"
 )
 
 type RoutingMgr struct{
@@ -31,65 +29,52 @@ func (c *RoutingMgr) Stop(){
 	logger.Info("Stop routing manager")
 	// something restore ip tables
 }
+func (c *RoutingMgr) AddIPStr(domain string, input string) (err error){
+	return c.AddIp(domain, net.ParseIP(input))
+}
 
-func (c *RoutingMgr)AddIp(domain string, input string) (err error){
-	ip := net.ParseIP(input)
-	if len(ip) == net.IPv4len{
-		bChanged := func()bool{
-			c.mux.Lock()
-			defer c.mux.Unlock()
-			ips, ok := c.ipListV4[domain]
-			if !ok{
-				ips = make([]net.IP, 1)
-				ips[0] = ip
-			}else{
-				// lets check if ip already exists
-				for _, elem := range ips{
-					if elem.Equal(ip){
-						return false
-					}
-				}
-				ips = append(ips, ip)
-			}
-			c.ipListV4[domain] = ips
-			return true
-		}()
-		if bChanged{
-			// lets call append routing chain
-			if errAdd := c.routingTableAddIPV4(ip); errAdd != nil{
-				log.GetLogger().Error("Add IP to routing table failed", zap.String("ip", input), zap.String("error", err.Error()))
-			}
-		}
 
-	}else if len(ip) == net.IPv6len{
-		bChanged := func()bool{
-			c.mux.Lock()
-			defer c.mux.Unlock()
-			ips, ok := c.ipListV6[domain]
-			if !ok{
-				ips = make([]net.IP, 1)
-				ips[0] = ip
-			}else{
-				// lets check if ip already exists
-				for _, elem := range ips{
-					if elem.Equal(ip){
-						return false
-					}
-				}
-				ips = append(ips, ip)
-			}
-			c.ipListV6[domain] = ips
-			return true
-		}()
-		if bChanged {
-			// lets call append routing chain
-			if errAdd := c.routingTableAddIPV6(ip); errAdd != nil{
-				log.GetLogger().Error("Add IP to routing table failed", zap.String("ip", input), zap.String("error", err.Error()))
-			}
-		}
+func (c *RoutingMgr)isChanged(domain string, ip net.IP, isIPv6 bool) bool{
+	c.mux.Lock()
+	defer c.mux.Unlock()
 
+	var ipMap map[string][]net.IP
+
+	if isIPv6{
+		ipMap = c.ipListV6
 	}else{
-		return errors.New(fmt.Sprintf("Parse IP address failed: %s", input))
+		ipMap = c.ipListV4
+	}
+
+
+	ips, ok := ipMap[domain]
+	if !ok{
+		ips = make([]net.IP, 1)
+		ips[0] = ip
+	}else{
+		// lets check if ip already exists
+		for _, elem := range ips{
+			if elem.Equal(ip){
+				return false
+			}
+		}
+		ips = append(ips, ip)
+	}
+	ipMap[domain] = ips
+	return true
+}
+func (c *RoutingMgr)AddIp(domain string, ip net.IP) (err error){
+	isIPv6 := ip.To4() == nil
+	if c.isChanged(domain, ip, isIPv6) {
+		if isIPv6{
+			if errAdd := c.routingTableAddIPV6(ip); errAdd != nil{
+				log.GetLogger().Error("Add IP to routing table failed", zap.String("ip", ip.String()), zap.String("error", err.Error()))
+			}
+		}else{
+			if errAdd := c.routingTableAddIPV4(ip); errAdd != nil{
+				log.GetLogger().Error("Add IP to routing table failed", zap.String("ip", ip.String()), zap.String("error", err.Error()))
+			}
+		}
 	}
 	return
 }
@@ -176,10 +161,12 @@ func (c *RoutingMgr)ReloadPacList(domains map[string]bool, ips map[string]bool){
 }
 
 func (c *RoutingMgr)routingTableAddIPV4(ip net.IP) (err error){
-
+	logger := log.GetLogger()
+	logger.Debug("routing table add ipv4", zap.String("ip", ip.String()))
 	return
 }
 func (c *RoutingMgr)routingTableAddIPV6(ip net.IP) (err error){
-
+	logger := log.GetLogger()
+	logger.Debug("routing table add ipv6", zap.String("ip", ip.String()))
 	return
 }
