@@ -11,7 +11,6 @@ import (
 	"github.com/weishi258/redfrog-core/proxy_client"
 	"github.com/weishi258/redfrog-core/routing"
 	"go.uber.org/zap"
-	"net"
 	"strings"
 	"time"
 )
@@ -106,15 +105,15 @@ func (c *DnsServer)getResolver(bIsRemote bool) *dnsResolver{
 
 func (c *DnsServer)ServeDNS(w dns.ResponseWriter, r *dns.Msg){
 	logger := log.GetLogger()
-	var domainName string
+	var isBlacked bool
 	for _, q := range r.Question{
 		if c.pacMgr.CheckDomain(q.Name){
-			domainName = q.Name
+			isBlacked = true
 			break
 		}
 	}
 
-	if len(domainName) != 0 {
+	if isBlacked {
 		resolver := c.getResolver(true)
 		data, err := r.Pack()
 		if err != nil{
@@ -131,32 +130,21 @@ func (c *DnsServer)ServeDNS(w dns.ResponseWriter, r *dns.Msg){
 			logger.Error("DNS unpack failed", zap.String("error", err.Error()))
 			return
 		}
-		ips := make([]net.IP, 0)
+
 		for _, a := range resDns.Answer{
 			if a.Header().Class == dns.ClassINET{
 				if a.Header().Rrtype == dns.TypeA{
-					if a.Header().Name == domainName {
-						ips = append(ips, a.(*dns.A).A)
-						logger.Debug("ipv4 ip query", zap.String("domain", domainName), zap.String("ip", a.(*dns.A).A.String()))
-					}
+					c.routingMgr.AddIp(a.Header().Name, a.(*dns.A).A)
+					logger.Debug("ipv4 ip query", zap.String("domain", a.Header().Name), zap.String("ip", a.(*dns.A).A.String()))
 				}else if a.Header().Rrtype == dns.TypeAAAA{
-					if a.Header().Name == domainName {
-						ips = append(ips, a.(*dns.AAAA).AAAA)
-						logger.Debug("ipv6 ip query", zap.String("domain", domainName), zap.String("ip", a.(*dns.AAAA).AAAA.String()))
-					}
+					c.routingMgr.AddIp(a.Header().Name, a.(*dns.AAAA).AAAA)
+					logger.Debug("ipv6 ip query", zap.String("domain", a.Header().Name), zap.String("ip", a.(*dns.AAAA).AAAA.String()))
 				}else if a.Header().Rrtype == dns.TypeCNAME{
-					if a.Header().Name == domainName{
-						cname := strings.TrimSuffix(a.(*dns.CNAME).Target, ".")
-						c.pacMgr.AddDomain(cname)
-						logger.Debug("Add CNAME to list", zap.String("CNAME", cname))
-
-					}
+					cname := strings.TrimSuffix(a.(*dns.CNAME).Target, ".")
+					c.pacMgr.AddDomain(cname)
+					logger.Debug("Add CNAME to list", zap.String("CNAME", cname))
 				}
 			}
-		}
-		// lets put it into iptables
-		for _, ip := range ips{
-			c.routingMgr.AddIp(domainName, ip)
 		}
 
 		w.WriteMsg(resDns)
