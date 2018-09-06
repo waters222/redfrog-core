@@ -184,6 +184,11 @@ func (c *PacListMgr)ReadPacList(paths []string){
 	return
 }
 
+func (c *PacListMgr)AddDomain(domain string){
+	c.proxyList.mux.Lock()
+	defer c.proxyList.mux.Unlock()
+	c.proxyList.proxyDomains[domain] = common.DOMAIN_BLACK_LIST
+}
 
 func (c * PacListMgr)CheckDomain(domain string) bool{
 	logger := log.GetLogger()

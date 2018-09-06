@@ -194,11 +194,10 @@ func (c *ProxyServer)handleTCP(conn net.Conn){
 
 	if err != nil {
 		if ee, ok := err.(net.Error); ok && ee.Timeout() {
-			return // ignore i/o timeout
+			logger.Debug("TCP relay successful", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize))
 		}else{
 			logger.Error("TCP relay failed", zap.String("error", err.Error()))
 		}
-
 	}else{
 		logger.Debug("TCP relay successful", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize))
 	}
@@ -230,11 +229,11 @@ func (c *ProxyServer)startUDPAccept(){
 			//}else{
 			//
 			//}
-			logger.Debug("Read from udp failed", zap.String("error", err.Error()))
+			logger.Debug("UDP Read failed", zap.String("error", err.Error()))
 			return
 
 		}else{
-			logger.Debug("Read udp ", zap.String("srcAddr", srcAddr.String()))
+			//logger.Debug("Read udp ", zap.String("srcAddr", srcAddr.String()))
 			go c.handleUDP(buffer, dataLen, srcAddr)
 		}
 	}
@@ -259,8 +258,8 @@ func (c *ProxyServer) handleUDP(buffer *bytes.Buffer, dataLen int, srcAddr net.A
 		return
 	}
 
-	keyStr := fmt.Sprintf("%s->%s", srcAddr.String(), dstAddr.String())
-
+	//keyStr := fmt.Sprintf("%s->%s", srcAddr.String(), dstAddr.String())
+	keyStr := srcAddr.String()
 	remoteConnEntry := c.udpNatMap_.Get(keyStr)
 
 	if remoteConnEntry == nil{
@@ -303,7 +302,7 @@ func (c *ProxyServer)copyFromRemote(remoteConn *net.UDPConn, dstAddr *net.UDPAdd
 			copy(writeBuffer[:headerLen], dstAddrBytes)
 			copy(writeBuffer[headerLen:totalLen], remoteBuffer.Bytes()[:dataLen])
 			if _, err = c.udpListener_.WriteTo(writeBuffer, srcAddr); err != nil{
-				logger.Error("Write back failed", zap.String("error", err.Error()))
+				logger.Error("UDP write back failed", zap.String("error", err.Error()))
 				return
 			}
 		}else{
@@ -312,10 +311,10 @@ func (c *ProxyServer)copyFromRemote(remoteConn *net.UDPConn, dstAddr *net.UDPAdd
 			copy(writeBuffer.Bytes()[headerLen:], remoteBuffer.Bytes()[:dataLen])
 			if _, err = c.udpListener_.WriteTo(writeBuffer.Bytes()[:totalLen], srcAddr); err != nil{
 				c.udpLeakyBuffer.Put(writeBuffer)
-				logger.Error("Write back failed", zap.String("error", err.Error()))
+				logger.Error("UDP write back failed", zap.String("error", err.Error()))
 				return
 			}else{
-				logger.Debug("Write back to successful", zap.String("addr", srcAddr.String()))
+				logger.Debug("UDP write back to successful", zap.String("addr", srcAddr.String()))
 				c.udpLeakyBuffer.Put(writeBuffer)
 			}
 		}

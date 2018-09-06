@@ -1,15 +1,16 @@
+packet-mask: "0x1/0x1"
+listen-port: 9090
 dns:
   listen-addr: "192.168.0.1:53"
-  dns-timeout: 10
+  dns-timeout: 60
   local-resolver:
     - "114.114.114.114"
   proxy-resolver:
     - "8.8.8.8"
-
+    - "8.8.4.4"
 shadowsocks:
-  listen-addr: "0.0.0.0:9090"
-  tcp-timeout: 240
-  udp-timeout: 120
+  tcp-timeout: 120
+  udp-timeout: 60
   pac-list:
     - "gfw-list.txt"
     - "gfw-list.txt"

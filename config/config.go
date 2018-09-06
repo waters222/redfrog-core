@@ -41,7 +41,6 @@ type RemoteServerConfig struct{
 }
 
 type ShadowsocksConfig struct{
-	ListenAddr 		string            `yaml:"listen-addr"`
 	UdpTimeout 		int               `yaml:"udp-timeout"`
 	TcpTimeout 		int               `yaml:"tcp-timeout"`
 	PacList   		[]string             `yaml:"pac-list"`
@@ -51,6 +50,8 @@ type Config struct {
 	DefaultNat 		string 				`yaml:"default-nat"`
 	Dns				DnsConfig			`yaml:"dns"`
 	Shadowsocks 	ShadowsocksConfig 	`yaml:"shadowsocks"`
+	PacketMask 		string				`yaml:"packet-mask"`
+	ListenPort 		int            		`yaml:"listen-port"`
 }
 
 //var config_ *Config

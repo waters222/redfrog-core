@@ -26,9 +26,9 @@ type dnsResolver struct {
 }
 
 type DnsServer struct {
-	routingMgr 		*routing.RoutingMgr
-	proxyMgr		*pac.PacListMgr
-	server			*dns.Server
+	routingMgr *routing.RoutingMgr
+	pacMgr     *pac.PacListMgr
+	server     *dns.Server
 
 	localResolver 	[]*dnsResolver
 	remoteResolver 	[]*dnsResolver
@@ -52,7 +52,7 @@ func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingM
 	if pacMgr == nil{
 		return nil, errors.New("Pac list manager is nil")
 	}
-	ret.proxyMgr = pacMgr
+	ret.pacMgr = pacMgr
 
 
 
@@ -108,7 +108,7 @@ func (c *DnsServer)ServeDNS(w dns.ResponseWriter, r *dns.Msg){
 	logger := log.GetLogger()
 	var domainName string
 	for _, q := range r.Question{
-		if c.proxyMgr.CheckDomain(q.Name){
+		if c.pacMgr.CheckDomain(q.Name){
 			domainName = q.Name
 			break
 		}
@@ -143,6 +143,13 @@ func (c *DnsServer)ServeDNS(w dns.ResponseWriter, r *dns.Msg){
 					if a.Header().Name == domainName {
 						ips = append(ips, a.(*dns.AAAA).AAAA)
 						logger.Debug("ipv6 ip query", zap.String("domain", domainName), zap.String("ip", a.(*dns.AAAA).AAAA.String()))
+					}
+				}else if a.Header().Rrtype == dns.TypeCNAME{
+					if a.Header().Name == domainName{
+						cname := strings.TrimSuffix(a.(*dns.CNAME).Target, ".")
+						c.pacMgr.AddDomain(cname)
+						logger.Debug("Add CNAME to list", zap.String("CNAME", cname))
+
 					}
 				}
 			}

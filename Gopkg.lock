@@ -11,6 +11,12 @@
   revision = "8b13a72661dae6e9e5dea04f344f0dc95ea29547"
 
 [[projects]]
+  name = "github.com/coreos/go-iptables"
+  packages = ["iptables"]
+  revision = "47f22b0dd3355c0ba570ba12b0b8a36bf214c04b"
+  version = "v0.4.0"
+
+[[projects]]
   name = "github.com/miekg/dns"
   packages = ["."]
   revision = "5a2b9fab83ff0f8bfc99684bd5f43a37abe560f1"
@@ -99,6 +105,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "251bf632877c7ca1752d48ad6cadc16aa49fefd089f3081f791922a2ea936d19"
+  inputs-digest = "16b6c08ae83cbd91f7e48bb84549cbaf4185b013c68192fd43097fe20a4adf73"
   solver-name = "gps-cdcl"
   solver-version = 1

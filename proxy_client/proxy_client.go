@@ -23,11 +23,11 @@ type ProxyClient struct {
 
 }
 
-func StartProxyClient(config config.ShadowsocksConfig) (*ProxyClient, error){
+func StartProxyClient(config config.ShadowsocksConfig, listenAddr string) (*ProxyClient, error){
 	logger := log.GetLogger()
 
 	ret := &ProxyClient{}
-	ret.addr = config.ListenAddr
+	ret.addr = listenAddr
 	ret.backends_ = make([]*proxyBackend, 0)
 	for _, backendConfig := range config.Servers{
 		if backend, err := CreateProxyBackend(backendConfig, config.TcpTimeout, config.UdpTimeout); err != nil{
@@ -39,12 +39,12 @@ func StartProxyClient(config config.ShadowsocksConfig) (*ProxyClient, error){
 		}
 	}
 
-	isIPv6, err := network.CheckIPFamily(config.ListenAddr)
+	isIPv6, err := network.CheckIPFamily(listenAddr)
 	if err != nil{
 		err = errors.Wrap(err, "Check addr ip family failed")
 		return nil, err
 	}
-	if ret.tcpListener, err = network.ListenTransparentTCP(config.ListenAddr, isIPv6); err != nil{
+	if ret.tcpListener, err = network.ListenTransparentTCP(listenAddr, isIPv6); err != nil{
 		err = errors.Wrap(err, "TCP listen failed")
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func StartProxyClient(config config.ShadowsocksConfig) (*ProxyClient, error){
 	ret.udpBuffer_ = common.NewLeakyBuffer(common.UDP_BUFFER_POOL_SIZE, common.UDP_BUFFER_SIZE)
 	ret.udpOOBBuffer_ = common.NewLeakyBuffer(common.UDP_OOB_POOL_SIZE, common.UDP_OOB_BUFFER_SIZE)
 
-	if ret.udpListener, err = network.ListenTransparentUDP(config.ListenAddr, isIPv6); err != nil{
+	if ret.udpListener, err = network.ListenTransparentUDP(listenAddr, isIPv6); err != nil{
 		ret.tcpListener.Close()
 		err = errors.Wrap(err, "UDP listen failed")
 		return nil, err
@@ -63,7 +63,7 @@ func StartProxyClient(config config.ShadowsocksConfig) (*ProxyClient, error){
 	go ret.startListenUDP()
 
 
-	logger.Info("ProxyClient start successful", zap.String("addr", config.ListenAddr))
+	logger.Info("ProxyClient start successful", zap.String("addr", listenAddr))
 	return ret, nil
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	. "github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/dns_proxy"
 	"github.com/weishi258/redfrog-core/log"
@@ -91,7 +92,7 @@ func main(){
 
 	// init routing mgr
 	var routingMgr *routing.RoutingMgr
-	if routingMgr, err = routing.StartRoutingMgr(); err != nil{
+	if routingMgr, err = routing.StartRoutingMgr(config.ListenPort, config.PacketMask); err != nil{
 		logger.Error("Init routing manager failed", zap.String("error", err.Error()))
 		return
 	}
@@ -108,7 +109,7 @@ func main(){
 
 
 	var proxyClient* proxy_client.ProxyClient
-	if proxyClient, err = proxy_client.StartProxyClient(config.Shadowsocks); err != nil{
+	if proxyClient, err = proxy_client.StartProxyClient(config.Shadowsocks, fmt.Sprintf("0.0.0.0:%d", config.ListenPort)); err != nil{
 		logger.Error("Start proxy client failed", zap.String("error", err.Error()))
 		return
 	}
