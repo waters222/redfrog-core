@@ -11,6 +11,12 @@
   revision = "8b13a72661dae6e9e5dea04f344f0dc95ea29547"
 
 [[projects]]
+  name = "github.com/coreos/go-iptables"
+  packages = ["iptables"]
+  revision = "47f22b0dd3355c0ba570ba12b0b8a36bf214c04b"
+  version = "v0.4.0"
+
+[[projects]]
   name = "github.com/miekg/dns"
   packages = ["."]
   revision = "5a2b9fab83ff0f8bfc99684bd5f43a37abe560f1"
@@ -27,7 +33,8 @@
   packages = [
     "core",
     "shadowaead",
-    "shadowstream"
+    "shadowstream",
+    "socks"
   ]
   revision = "8f3c47fc33218e7f547bd95e90269a30f7cbbed7"
   version = "v0.0.11"
@@ -98,6 +105,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "9d034f612ea6a828ed57a370c48a5f8c3148e92a8322f87787e71e74924a905b"
+  inputs-digest = "16b6c08ae83cbd91f7e48bb84549cbaf4185b013c68192fd43097fe20a4adf73"
   solver-name = "gps-cdcl"
   solver-version = 1

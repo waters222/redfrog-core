@@ -20,6 +20,17 @@ const (
 	ipv6Regex = "^\\[(.+)\\]\\:([0-9]+)$"
 )
 
+const (
+	SOL_IP = 0
+	IP_TRANSPARENT = 0x13
+	IP_RECVORIGDSTADDR = 0x14
+)
+const (
+	ShadowSocksAtypIPv4       = 1
+	ShadowSocksAtypDomainName = 3
+	ShadowSocksAtypIPv6       = 4
+)
+
 func CheckIPFamily(addr string) (ret bool, err error) {
 	var re *regexp.Regexp
 	if re , err = regexp.Compile(ipv4Regex); err != nil{
@@ -46,27 +57,38 @@ func CheckIPFamily(addr string) (ret bool, err error) {
 
 
 func ParseAddr(addr string, isIpV6 bool) (ip net.IP, port int, err error){
-	var re *regexp.Regexp
-	regexSelection := ipv4Regex
-	if isIpV6 {
-		regexSelection = ipv6Regex
-	}
-	if re , err = regexp.Compile(regexSelection); err != nil{
-		err = errors.Wrap(err, "Compile ip regex failed")
+	var hostStr string
+	var portStr string
+	if hostStr, portStr, err = net.SplitHostPort(addr); err != nil{
+
 		return
 	}
-	if matches := re.FindAllStringSubmatch(addr, -1); len(matches) == 0 && len(matches[0]) != 3{
-		err = errors.New(fmt.Sprintf("Invalid ip address %s", addr))
+	var portnum uint64
+	if portnum, err = strconv.ParseUint(portStr, 10, 16); err != nil{
+		err = errors.Wrap(err, "Port format invalid")
+		return
+	}
+	port = int(portnum)
+
+	ip = net.ParseIP(hostStr)
+	if ip == nil{
+		err = errors.New("IP format invalid")
+		return
+	}
+	if isIpV6{
+		ip = ip.To16()
+		if ip == nil{
+			err = errors.New("Its not ipv6 address")
+			return
+		}
 	}else{
-		var portTemp uint64
-		if ip = net.ParseIP(matches[0][1]); ip == nil{
-			err = errors.New(fmt.Sprintf("Invalid ip address: %s", matches[0][1]))
-		}else if portTemp, err = strconv.ParseUint(matches[0][2], 10, 32); err != nil{
-			err = errors.New(fmt.Sprintf("Port parse failed: %s", matches[0][2]))
-		}else{
-			port = int(portTemp)
+		ip = ip.To4()
+		if ip == nil{
+			err = errors.New("Its not ipv4 address")
+			return
 		}
 	}
+
 
 	return
 }
@@ -114,7 +136,7 @@ func ListenTransparentTCP(addr string, isIPv6 bool) (ln net.Listener, err error)
 	}
 	defer syscall.Close(socketFD)
 
-	if err = syscall.SetsockoptInt(socketFD, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil{
+	if err = syscall.SetsockoptInt(socketFD, SOL_IP, IP_TRANSPARENT, 1); err != nil{
 		err = errors.Wrap(err, "Set sockopt IP_TRANSPARENT failed")
 		return
 	}
@@ -150,6 +172,8 @@ func ListenTransparentTCP(addr string, isIPv6 bool) (ln net.Listener, err error)
 }
 
 func ListenTransparentUDP(addr string, isIPv6 bool) (ln *net.UDPConn, err error){
+
+
 	socketType := syscall.AF_INET
 	if isIPv6 {
 		socketType = syscall.AF_INET6
@@ -162,11 +186,11 @@ func ListenTransparentUDP(addr string, isIPv6 bool) (ln *net.UDPConn, err error)
 	}
 	defer syscall.Close(socketFD)
 
-	if err = syscall.SetsockoptInt(socketFD, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil{
+	if err = syscall.SetsockoptInt(socketFD, SOL_IP, IP_TRANSPARENT, 1); err != nil{
 		err = errors.Wrap(err, "Set sockopt IP_TRANSPARENT failed")
 		return
 	}
-	if err = syscall.SetsockoptInt(socketFD, syscall.SOL_IP, syscall.IP_RECVORIGDSTADDR, 1); err != nil{
+	if err = syscall.SetsockoptInt(socketFD, SOL_IP, IP_RECVORIGDSTADDR, 1); err != nil{
 		err = errors.Wrap(err, "Set sockopt IP_RECVORIGDSTADDR failed")
 		return
 	}
@@ -204,45 +228,41 @@ func ListenTransparentUDP(addr string, isIPv6 bool) (ln *net.UDPConn, err error)
 	return
 }
 
-func ReadFromTransparentUDP(conn *net.UDPConn, b []byte, oob []byte) (len int, src *net.UDPAddr, dst *net.UDPAddr, err error){
-	var oobn int
-	if len, oobn, _, src, err = conn.ReadMsgUDP(b, oob); err != nil{
-		return
-	}
 
+func ExtractOrigDstFromUDP(oobLen int, oobBuffer []byte) (dst *net.UDPAddr, err error){
 	var socketControlMsgs []syscall.SocketControlMessage
-	if socketControlMsgs, err = syscall.ParseSocketControlMessage(oob[:oobn]); err != nil{
+	if socketControlMsgs, err = syscall.ParseSocketControlMessage(oobBuffer[:oobLen]); err != nil{
 		return
 	}
 
 	for _, msg := range socketControlMsgs {
-		if msg.Header.Level == syscall.SOL_IP && msg.Header.Type == syscall.IP_RECVORIGDSTADDR {
+		if msg.Header.Level == SOL_IP && msg.Header.Type == IP_RECVORIGDSTADDR {
 			originalDstRaw := &syscall.RawSockaddrInet4{}
 			if err = binary.Read(bytes.NewReader(msg.Data), binary.LittleEndian, originalDstRaw); err != nil {
 				err = errors.Wrap(err, "Reading UDP original dst failed")
 				return
 			}
 			switch originalDstRaw.Family {
-				case syscall.AF_INET:
-					pp := (*syscall.RawSockaddrInet4)(unsafe.Pointer(originalDstRaw))
-					p := (*[2]byte)(unsafe.Pointer(&pp.Port))
-					dst = &net.UDPAddr{
-						IP:   net.IPv4(pp.Addr[0], pp.Addr[1], pp.Addr[2], pp.Addr[3]),
-						Port: int(p[0])<<8 + int(p[1]),
-					}
+			case syscall.AF_INET:
+				pp := (*syscall.RawSockaddrInet4)(unsafe.Pointer(originalDstRaw))
+				p := (*[2]byte)(unsafe.Pointer(&pp.Port))
+				dst = &net.UDPAddr{
+					IP:   net.IPv4(pp.Addr[0], pp.Addr[1], pp.Addr[2], pp.Addr[3]),
+					Port: int(p[0])<<8 + int(p[1]),
+				}
 
-				case syscall.AF_INET6:
-					pp := (*syscall.RawSockaddrInet6)(unsafe.Pointer(originalDstRaw))
-					p := (*[2]byte)(unsafe.Pointer(&pp.Port))
-					dst = &net.UDPAddr{
-						IP:   net.IP(pp.Addr[:]),
-						Port: int(p[0])<<8 + int(p[1]),
-						Zone: strconv.Itoa(int(pp.Scope_id)),
-					}
+			case syscall.AF_INET6:
+				pp := (*syscall.RawSockaddrInet6)(unsafe.Pointer(originalDstRaw))
+				p := (*[2]byte)(unsafe.Pointer(&pp.Port))
+				dst = &net.UDPAddr{
+					IP:   net.IP(pp.Addr[:]),
+					Port: int(p[0])<<8 + int(p[1]),
+					Zone: strconv.Itoa(int(pp.Scope_id)),
+				}
 
-				default:
-					err = errors.Wrapf(err, fmt.Sprintf("UDP original dst is an unsupported network family: %v", originalDstRaw.Family))
-					return
+			default:
+				err = errors.Wrapf(err, fmt.Sprintf("UDP original dst is an unsupported network family: %v", originalDstRaw.Family))
+				return
 			}
 		}
 	}
@@ -253,7 +273,10 @@ func ReadFromTransparentUDP(conn *net.UDPConn, b []byte, oob []byte) (len int, s
 	return
 }
 
-func DialTransparentUDP(addr *net.UDPAddr, isIPv6 bool) (ln *net.UDPConn, err error){
+func DialTransparentUDP(addr *net.UDPAddr) (ln *net.UDPConn, err error){
+
+	isIPv6 := addr.IP.To4() == nil
+
 	socketType := syscall.AF_INET
 	if isIPv6 {
 		socketType = syscall.AF_INET6
@@ -266,7 +289,7 @@ func DialTransparentUDP(addr *net.UDPAddr, isIPv6 bool) (ln *net.UDPConn, err er
 	}
 	defer syscall.Close(socketFD)
 
-	if err = syscall.SetsockoptInt(socketFD, syscall.SOL_IP, syscall.IP_TRANSPARENT, 1); err != nil{
+	if err = syscall.SetsockoptInt(socketFD, SOL_IP, IP_TRANSPARENT, 1); err != nil{
 		err = errors.Wrap(err, "Set sockopt IP_TRANSPARENT failed")
 		return
 	}
@@ -301,4 +324,35 @@ func DialTransparentUDP(addr *net.UDPAddr, isIPv6 bool) (ln *net.UDPConn, err er
 	}
 
 	return
+}
+
+func ConvertShadowSocksAddr(addr string)([]byte, error) {
+	var ret []byte
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil{
+		return nil, err
+	}
+	ip := net.ParseIP(host)
+	if ip == nil{
+		return nil, errors.New("IP format invalid")
+	}
+	if ipv4 := ip.To4(); ipv4 != nil{
+		ret = make([]byte, 1 + net.IPv4len + 2)
+		ret[0] = ShadowSocksAtypIPv4
+		copy(ret[1:], ipv4)
+	}else {
+		ret = make([]byte, 1 + net.IPv6len + 2)
+		ret[0] = ShadowSocksAtypIPv6
+		copy(ret[1:], ip)
+	}
+	var hostPort uint64
+
+	if hostPort, err = strconv.ParseUint(port, 10, 16); err != nil{
+		return nil, errors.Wrap(err, "Port number format invalid")
+	}
+
+	ret[len(ret)-2], ret[len(ret)-1] = byte(hostPort>>8), byte(hostPort)
+
+	return ret, nil
+
 }

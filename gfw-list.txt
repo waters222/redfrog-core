@@ -7433,7 +7433,6 @@ zhengjian
 
 !################Whitelist Start################
 @@||aliyun.com
-@@||baidu.com
 !--@@||bing.com
 @@||chinaso.com
 @@||chinaz.com
@@ -7566,3 +7565,4 @@ devmate.com
 android.com
 bitcoin.org
 vision.cs.unc.edu
+baidu.com

@@ -184,6 +184,11 @@ func (c *PacListMgr)ReadPacList(paths []string){
 	return
 }
 
+func (c *PacListMgr)AddDomain(domain string){
+	c.proxyList.mux.Lock()
+	defer c.proxyList.mux.Unlock()
+	c.proxyList.proxyDomains[domain] = common.DOMAIN_BLACK_LIST
+}
 
 func (c * PacListMgr)CheckDomain(domain string) bool{
 	logger := log.GetLogger()
@@ -212,9 +217,9 @@ func (c * PacListMgr)CheckDomain(domain string) bool{
 	c.proxyList.mux.RUnlock()
 
 	for i := 0; i < len; i++{
-		if _, ok := proxyList[stubs[i]]; ok {
-			logger.Debug("Domain is in proxy_client list", zap.String("domain", domain))
-			return true
+		if blacked, ok := proxyList[stubs[i]]; ok {
+			logger.Debug("Domain is in proxy_client list", zap.String("domain", domain), zap.Bool("blacked", blacked))
+			return blacked
 		}
 	}
 
@@ -290,7 +295,7 @@ func (c *PacList) parsePacListLine(line []byte) (err error){
 	if len(line) == 0{
 		return
 	}
-	logger := log.GetLogger()
+	//logger := log.GetLogger()
 	var re *regexp.Regexp
 
 	// replace all white space etc
@@ -301,7 +306,7 @@ func (c *PacList) parsePacListLine(line []byte) (err error){
 		return errors.Wrap(err, fmt.Sprintf("Compile regex failed: %s", regex_pacVersion_))
 	}
 	if re.Match(line) {
-		logger.Debug("ParsePAC match pac version", zap.String("line", string(line[:])))
+		//logger.Debug("ParsePAC match pac version", zap.String("line", string(line[:])))
 		return
 	}
 
@@ -310,7 +315,7 @@ func (c *PacList) parsePacListLine(line []byte) (err error){
 		return errors.Wrap(err, fmt.Sprintf("Compile regex failed: %s", regex_commentRegex_))
 	}
 	if re.Match(line) {
-		logger.Debug("ParsePAC match comment ", zap.String("line", string(line[:])))
+		//logger.Debug("ParsePAC match comment ", zap.String("line", string(line[:])))
 		return
 	}
 
@@ -370,7 +375,7 @@ func (c *PacList) parsePacListLine(line []byte) (err error){
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 0 {
 		ip := string(matches[0][1][:])
 		c.IPs[ip] = bDomainType
-		logger.Debug("ParsePAC find ip", zap.String("line", string(line[:])), zap.String("ip", ip), zap.Bool("black_list", bDomainType))
+		//logger.Debug("ParsePAC find ip", zap.String("line", string(line[:])), zap.String("ip", ip), zap.Bool("black_list", bDomainType))
 		return
 	}
 
@@ -382,7 +387,7 @@ func (c *PacList) parsePacListLine(line []byte) (err error){
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 0 {
 		domain := string(matches[0][1][:])
 		c.Domains[domain] = bDomainType
-		logger.Debug("ParsePAC find domain", zap.String("line", string(line[:])), zap.String("domain", domain), zap.Bool("black_list", bDomainType))
+		//logger.Debug("ParsePAC find domain", zap.String("line", string(line[:])), zap.String("domain", domain), zap.Bool("black_list", bDomainType))
 		return
 	}
 
@@ -394,9 +399,9 @@ func (c *PacList) parsePacListLine(line []byte) (err error){
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 0 {
 		domain := string(matches[0][1][:])
 		c.Domains[domain] = bDomainType
-		logger.Debug("ParsePAC find domain", zap.String("line", string(line[:])), zap.String("domain", domain), zap.Bool("black_list", bDomainType))
+		//logger.Debug("ParsePAC find domain", zap.String("line", string(line[:])), zap.String("domain", domain), zap.Bool("black_list", bDomainType))
 	}else{
-		logger.Debug("ParsePAC can not find domain or ip", zap.String("line", string(line[:])))
+		//logger.Debug("ParsePAC can not find domain or ip", zap.String("line", string(line[:])))
 	}
 	return
 }

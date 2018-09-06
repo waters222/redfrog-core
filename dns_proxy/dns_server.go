@@ -1,16 +1,17 @@
 package dns_proxy
 
 import (
-	"github.com/weishi258/redfrog-core/log"
-	"github.com/weishi258/redfrog-core/config"
-	"go.uber.org/zap"
-	"github.com/weishi258/redfrog-core/routing"
-	"github.com/pkg/errors"
-	"github.com/miekg/dns"
-	"github.com/weishi258/redfrog-core/pac"
-	"strings"
-	"fmt"
 	"context"
+	"fmt"
+	"github.com/miekg/dns"
+	"github.com/pkg/errors"
+	"github.com/weishi258/redfrog-core/config"
+	"github.com/weishi258/redfrog-core/log"
+	"github.com/weishi258/redfrog-core/pac"
+	"github.com/weishi258/redfrog-core/proxy_client"
+	"github.com/weishi258/redfrog-core/routing"
+	"go.uber.org/zap"
+	"strings"
 	"time"
 )
 
@@ -24,19 +25,24 @@ type dnsResolver struct {
 }
 
 type DnsServer struct {
-	routingMgr 		*routing.RoutingMgr
-	proxyMgr		*pac.PacListMgr
-	server			*dns.Server
+	routingMgr *routing.RoutingMgr
+	pacMgr     *pac.PacListMgr
+	server     *dns.Server
 
 	localResolver 	[]*dnsResolver
 	remoteResolver 	[]*dnsResolver
+
+	proxyClient 	*proxy_client.ProxyClient
+	dnsTimeout		time.Duration
 }
 
 
-func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingMgr *routing.RoutingMgr) (ret *DnsServer, err error){
+func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingMgr *routing.RoutingMgr, proxyClient *proxy_client.ProxyClient) (ret *DnsServer, err error){
 	logger := log.GetLogger()
 
 	ret = &DnsServer{}
+	ret.proxyClient = proxyClient
+	ret.dnsTimeout = time.Second * time.Duration(dnsConfig.DnsTimeout)
 	if routingMgr == nil{
 		return nil, errors.New("Routing manager is nil")
 	}
@@ -45,12 +51,12 @@ func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingM
 	if pacMgr == nil{
 		return nil, errors.New("Pac list manager is nil")
 	}
-	ret.proxyMgr = pacMgr
+	ret.pacMgr = pacMgr
 
 
 
 	ret.server = &dns.Server{Addr: dnsConfig.ListenAddr, Net:"udp", Handler: ret}
-	logger.Info("Dns server started",  zap.String("addr", dnsConfig.ListenAddr))
+	logger.Info("Dns server starting",  zap.String("addr", dnsConfig.ListenAddr))
 	go func(){
 		if err = ret.server.ListenAndServe(); err != nil{
 			logger.Error("Dns server start failed", zap.String("error", err.Error()))
@@ -99,25 +105,54 @@ func (c *DnsServer)getResolver(bIsRemote bool) *dnsResolver{
 
 func (c *DnsServer)ServeDNS(w dns.ResponseWriter, r *dns.Msg){
 	logger := log.GetLogger()
-	bInProxyList := false
+	var isBlacked bool
 	for _, q := range r.Question{
-		if c.proxyMgr.CheckDomain(q.Name){
-			bInProxyList = true
+		if c.pacMgr.CheckDomain(q.Name){
+			isBlacked = true
 			break
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second * DNS_TIMEOUT)
-	defer cancel()
-	if bInProxyList {
+	if isBlacked {
 		resolver := c.getResolver(true)
-		if response, t, err := resolver.client.ExchangeContext(ctx, r, resolver.addr); err != nil{
-			logger.Debug("Can not exchange dns query for local resolver", zap.String("addr", resolver.addr), zap.String("error", err.Error()))
-		}else{
-			logger.Debug("Dns query for local resolver successful", zap.String("addr", resolver.addr), zap.Duration("time", t))
-			w.WriteMsg(response)
+		data, err := r.Pack()
+		if err != nil{
+			logger.Error("Pack DNS query failed", zap.String("error", err.Error()))
+			return
 		}
+		responseBytes, err := c.proxyClient.ExchangeDNS(w.RemoteAddr().String(), resolver.addr, data, c.dnsTimeout)
+		if err != nil{
+			logger.Error("DNS remote resolve failed", zap.String("error", err.Error()))
+			return
+		}
+		resDns := new(dns.Msg)
+		if err = resDns.Unpack(responseBytes); err != nil{
+			logger.Error("DNS unpack failed", zap.String("error", err.Error()))
+			return
+		}
+
+		for _, a := range resDns.Answer{
+			if a.Header().Class == dns.ClassINET{
+				if a.Header().Rrtype == dns.TypeA{
+					c.routingMgr.AddIp(a.Header().Name, a.(*dns.A).A)
+					logger.Debug("ipv4 ip query", zap.String("domain", a.Header().Name), zap.String("ip", a.(*dns.A).A.String()))
+				}else if a.Header().Rrtype == dns.TypeAAAA{
+					c.routingMgr.AddIp(a.Header().Name, a.(*dns.AAAA).AAAA)
+					logger.Debug("ipv6 ip query", zap.String("domain", a.Header().Name), zap.String("ip", a.(*dns.AAAA).AAAA.String()))
+				}else if a.Header().Rrtype == dns.TypeCNAME{
+					cname := strings.TrimSuffix(a.(*dns.CNAME).Target, ".")
+					c.pacMgr.AddDomain(cname)
+					logger.Debug("Add CNAME to list", zap.String("CNAME", cname))
+				}
+			}
+		}
+
+		w.WriteMsg(resDns)
+
 	}else{
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second * DNS_TIMEOUT)
+		defer cancel()
+
 		resolver := c.getResolver(false)
 		if response, t, err := resolver.client.ExchangeContext(ctx, r, resolver.addr); err != nil{
 			logger.Debug("Can not exchange dns query for remote resolver", zap.String("addr", resolver.addr), zap.String("error", err.Error()))

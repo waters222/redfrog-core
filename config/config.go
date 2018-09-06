@@ -11,7 +11,8 @@ import (
 type DnsConfig struct {
 	ListenAddr			string 		`yaml:"listen-addr"`
 	LocalResolver		[]string	`yaml:"local-resolver"`
-	ProxyResolver		[]string	`yaml:"proxy_client-resolver"`
+	ProxyResolver		[]string	`yaml:"proxy-resolver"`
+	DnsTimeout			int			`yaml:"dns-timeout"`
 
 }
 
@@ -32,7 +33,7 @@ type KcptunConfig struct {
 	Nocomp			bool		`yaml:"nocomp"`
 }
 
-type ServerConfig struct{
+type RemoteServerConfig struct{
 	RemoteServer	string 			`yaml:"remote-server"`
 	Crypt			string 			`yaml:"crypt"`
 	Password		string 			`yaml:"password"`
@@ -40,15 +41,17 @@ type ServerConfig struct{
 }
 
 type ShadowsocksConfig struct{
-	ListenAddr 		string          `yaml:"listen-addr"`
-	UdpTimeout 		int			 	`yaml:"udp-timeout"`
-	PacList   		[]string       	`yaml:"pac-list"`
-	Servers   		[]ServerConfig 	`yaml:"servers"`
+	UdpTimeout 		int               `yaml:"udp-timeout"`
+	TcpTimeout 		int               `yaml:"tcp-timeout"`
+	PacList   		[]string             `yaml:"pac-list"`
+	Servers   		[]RemoteServerConfig `yaml:"servers"`
 }
 type Config struct {
 	DefaultNat 		string 				`yaml:"default-nat"`
 	Dns				DnsConfig			`yaml:"dns"`
 	Shadowsocks 	ShadowsocksConfig 	`yaml:"shadowsocks"`
+	PacketMask 		string				`yaml:"packet-mask"`
+	ListenPort 		int            		`yaml:"listen-port"`
 }
 
 //var config_ *Config
@@ -60,7 +63,7 @@ type Config struct {
 //	config_ = config
 //}
 
-func ParseConfig(path string) (ret Config, err error){
+func ParseClientConfig(path string) (ret Config, err error){
 	file, err := os.Open(path) // For read access.
 	if err != nil {
 		err = errors.Wrapf(err, "Open config file %s failed", path)

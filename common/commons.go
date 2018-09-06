@@ -4,3 +4,12 @@ const (
 	DOMAIN_WHITE_LIST	= false
 	DOMAIN_BLACK_LIST	= true
 )
+const (
+	UDP_BUFFER_POOL_SIZE 	= 1024
+
+	UDP_BUFFER_SIZE 		= 1024 * 4
+
+	UDP_OOB_POOL_SIZE 		= 512
+	UDP_OOB_BUFFER_SIZE 	= 1024 * 2
+)
+
