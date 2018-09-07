@@ -103,9 +103,22 @@ func (c *DnsServer)getResolver(bIsRemote bool) *dnsResolver{
 	}
 }
 
+func (c *DnsServer) applyFilterChain(r *dns.Msg) *dns.Msg{
+	// TODO
+	// 1. Implement DNS cache filter for fast performance
+	// 2. Implement DNS block filter for ads blocking etc
+	return nil
+}
+
 func (c *DnsServer)ServeDNS(w dns.ResponseWriter, r *dns.Msg){
 	logger := log.GetLogger()
-	var isBlacked bool
+
+	if resDns := c.applyFilterChain(r); resDns != nil{
+		w.WriteMsg(resDns)
+		return
+	}
+
+	isBlacked := false
 	for _, q := range r.Question{
 		if c.pacMgr.CheckDomain(q.Name){
 			isBlacked = true
