@@ -51,22 +51,22 @@ func StartRoutingMgr(port int, mark string) (ret *RoutingMgr, err error){
 		return
 	}
 	logger.Info("IPTables v4 successful created")
-
-	if ret.ip6tbl, err = iptables.NewWithProtocol(iptables.ProtocolIPv6); err != nil{
-		err = errors.Wrap(err, "Create IPTables handler failed")
-		return
-	}
-
-	if err = ret.createDivertChain(port, mark, true); err != nil{
-		return
-	}
-	if err = ret.createRedFrogChain(true); err != nil{
-		return
-	}
-	if err = ret.initPreRoutingChain(true); err != nil{
-		return
-	}
-	logger.Info("IPTables v4 successful created")
+	//
+	//if ret.ip6tbl, err = iptables.NewWithProtocol(iptables.ProtocolIPv6); err != nil{
+	//	err = errors.Wrap(err, "Create IPTables handler failed")
+	//	return
+	//}
+	//
+	//if err = ret.createDivertChain(port, mark, true); err != nil{
+	//	return
+	//}
+	//if err = ret.createRedFrogChain(true); err != nil{
+	//	return
+	//}
+	//if err = ret.initPreRoutingChain(true); err != nil{
+	//	return
+	//}
+	//logger.Info("IPTables v6 successful created")
 	logger.Info("Init routing manager successful")
 	return
 }
@@ -135,7 +135,7 @@ func (c* RoutingMgr)clearIPTables(iptbl *iptables.IPTables){
 func (c *RoutingMgr) Stop(){
 	logger := log.GetLogger()
 	c.clearIPTables(c.ip4tbl)
-	c.clearIPTables(c.ip6tbl)
+	//c.clearIPTables(c.ip6tbl)
 	logger.Info("Stop routing manager")
 }
 func (c *RoutingMgr) AddIPStr(domain string, input string) (err error){
@@ -280,7 +280,7 @@ func (c *RoutingMgr)routingTableAddIPV4(ip net.IP) (err error){
 func (c *RoutingMgr)routingTableAddIPV6(ip net.IP) (err error){
 	logger := log.GetLogger()
 	logger.Debug("routing table add ipv6", zap.String("ip", ip.String()))
-	c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY)
+	//c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY)
 	//c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "tcp", "-d", ip.String(), "-j", CHAIN_TPROXY)
 	//c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "udp", "-d", ip.String(), "-j", CHAIN_TPROXY)
 	return

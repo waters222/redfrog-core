@@ -17,6 +17,24 @@
   version = "v0.4.0"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/golang/snappy"
+  packages = ["."]
+  revision = "2e65f85255dbc3072edf28d6b5b8efc472979f5a"
+
+[[projects]]
+  name = "github.com/klauspost/cpuid"
+  packages = ["."]
+  revision = "ae7887de9fa5d2db4eaa8174a7eff2c1ac00f2da"
+  version = "v1.1"
+
+[[projects]]
+  name = "github.com/klauspost/reedsolomon"
+  packages = ["."]
+  revision = "6bb6130ff6a76a904c1841707d65603aec9cc288"
+  version = "v1.6"
+
+[[projects]]
   name = "github.com/miekg/dns"
   packages = ["."]
   revision = "5a2b9fab83ff0f8bfc99684bd5f43a37abe560f1"
@@ -38,6 +56,36 @@
   ]
   revision = "8f3c47fc33218e7f547bd95e90269a30f7cbbed7"
   version = "v0.0.11"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/templexxx/cpufeat"
+  packages = ["."]
+  revision = "cef66df7f161dee20f4d650da7268d77eaaec82d"
+
+[[projects]]
+  name = "github.com/templexxx/xor"
+  packages = ["."]
+  revision = "0af8e873c554da75f37f2049cdffda804533d44c"
+  version = "0.1.2"
+
+[[projects]]
+  name = "github.com/tjfoc/gmsm"
+  packages = ["sm4"]
+  revision = "98aa888b79d8de04afe0fccf45ed10594efc858b"
+  version = "v1.1"
+
+[[projects]]
+  name = "github.com/xtaci/kcp-go"
+  packages = ["."]
+  revision = "60be01eef6f665151bfbcde38429ee1d8710f68f"
+  version = "v4.0"
+
+[[projects]]
+  name = "github.com/xtaci/smux"
+  packages = ["."]
+  revision = "e28719eede1ac5714cf0b06ba2f403125864ebe0"
+  version = "v1.0.7"
 
 [[projects]]
   name = "go.uber.org/atomic"
@@ -68,13 +116,21 @@
   branch = "master"
   name = "golang.org/x/crypto"
   packages = [
+    "blowfish",
+    "cast5",
     "chacha20poly1305",
     "ed25519",
     "ed25519/internal/edwards25519",
     "hkdf",
     "internal/chacha20",
     "internal/subtle",
-    "poly1305"
+    "pbkdf2",
+    "poly1305",
+    "salsa20",
+    "salsa20/salsa",
+    "tea",
+    "twofish",
+    "xtea"
   ]
   revision = "614d502a4dac94afa3a6ce146bd1736da82514c6"
 
@@ -105,6 +161,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "16b6c08ae83cbd91f7e48bb84549cbaf4185b013c68192fd43097fe20a4adf73"
+  inputs-digest = "06e5cfae87ae0c13fc8e10d1e2d290742ba4e1bb8d34a59f604dbbc745616f83"
   solver-name = "gps-cdcl"
   solver-version = 1

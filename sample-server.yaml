@@ -5,9 +5,8 @@ servers:
     crypt: "AEAD_CHACHA20_POLY1305"
     Password: "123321A"
     kcptun:
-      enable: false
-      listen-port: 11000
-      key: "JumpJumpJump!!!"
+      enable: true
+      listen-port: 10010
       crypt: "salsa20"
       mode: "fast"
       conn: 1
@@ -19,15 +18,16 @@ servers:
       parityshard: 3
       dscp: 0
       nocomp: false
+      keep-alive: 10
+      sock-buf : 4194304
   - listen-port: 10001
     tcp-timeout: 120
     udp-timeout: 30
     crypt: "AEAD_CHACHA20_POLY1305"
     Password: "123321A"
     kcptun:
-      enable: false
-      listen-port: 11001
-      key: "JumpJumpJump!!!"
+      enable: true
+      listen-port: 10011
       crypt: "salsa20"
       mode: "fast"
       conn: 1
@@ -39,3 +39,5 @@ servers:
       parityshard: 3
       dscp: 0
       nocomp: false
+      keep-alive: 10
+      sock-buf : 4194304

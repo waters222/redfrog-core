@@ -19,6 +19,20 @@ type ServerConfig struct {
 	Password			string 	`yaml:"password"`
 	Kcptun			KcptunConfig	`yaml:"kcptun"`
 }
+func (c * ServerConfig)UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type rawConfig ServerConfig
+	raw := rawConfig{
+		TcpTimeout: 120,
+		UdpTimeout: 60,
+	}
+
+	if err := unmarshal(&raw); err != nil {
+		return err
+	}
+	*c = ServerConfig(raw)
+	return nil
+}
+
 
 
 

@@ -9,6 +9,7 @@ import (
 	"github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/log"
 	"github.com/weishi258/redfrog-core/network"
+	"github.com/xtaci/smux"
 	"go.uber.org/zap"
 	"io"
 	"net"
@@ -21,11 +22,12 @@ type proxyBackend struct{
 	tcpAddr         net.TCPAddr
 	udpAddr			*net.UDPAddr
 
-	networkType_ string
-	tcpTimeout_  time.Duration
-	udpTimeout_  time.Duration
-	udpNatMap_   *udpNatMap
-	dnsNatMap_	 *dnsNatMap
+	networkType_ 	string
+	tcpTimeout_  	time.Duration
+	udpTimeout_  	time.Duration
+	udpNatMap_   	*udpNatMap
+	dnsNatMap_	 	*dnsNatMap
+	kcpBackend		*KCPBackend
 }
 
 type dnsNatMap struct {
@@ -165,7 +167,44 @@ func CreateProxyBackend(config config.RemoteServerConfig, tcpTimeout int, udpTim
 
 	ret.udpNatMap_ = &udpNatMap{entries: make(map[string]*udpProxyEntry)}
 	ret.dnsNatMap_ = &dnsNatMap{entries: make(map[string]net.PacketConn)}
+
+	if config.Kcptun.Enable{
+		if ret.kcpBackend, err = StartKCPBackend(config.Kcptun, config.Kcptun.Crypt, config.Password); err != nil{
+			err = errors.Wrap(err, "Create KCP backend failed")
+		}
+	}
+
 	return
+}
+
+func (c *proxyBackend)Stop(){
+	logger := log.GetLogger()
+
+	c.udpNatMap_.Lock()
+	defer c.udpNatMap_.Unlock()
+
+	for _, entry := range c.udpNatMap_.entries{
+		if err := entry.src_.Close(); err != nil{
+			logger.Error("Close UDP proxy failed", zap.String("error", err.Error()))
+		}
+		if err := entry.dst_.Close(); err != nil{
+			logger.Error("Close UDP proxy failed", zap.String("error", err.Error()))
+		}
+	}
+
+	c.dnsNatMap_.Lock()
+	defer c.dnsNatMap_.Unlock()
+
+	for _, entry := range c.dnsNatMap_.entries{
+		if err := entry.Close(); err != nil{
+			logger.Error("Close DNS proxy failed", zap.String("error", err.Error()))
+		}
+	}
+
+	if c.kcpBackend != nil{
+		c.kcpBackend.Stop()
+	}
+	logger.Info("Proxy backend stopped")
 }
 
 func (c *proxyBackend) createTCPConn() (conn net.Conn, err error){
@@ -182,6 +221,41 @@ func (c *proxyBackend) createTCPConn() (conn net.Conn, err error){
 
 }
 
+func (c *proxyBackend)relayKCPData(srcConn net.Conn, kcpConn *smux.Stream, header []byte) (inboundSize int64, outboundSize int64, err error){
+	defer kcpConn.Close()
+
+	srcConn.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
+	kcpConn.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
+
+	if _, err = kcpConn.Write(header); err != nil{
+		err = errors.Wrap(err, "Kcp write to remote server failed")
+		return
+	}
+
+	ch := make(chan relayDataRes)
+
+	go func(){
+		res := relayDataRes{}
+		res.outboundSize, res.Err = io.Copy(srcConn, kcpConn)
+		srcConn.SetDeadline(time.Now())
+		kcpConn.SetDeadline(time.Now())
+		ch <- res
+	}()
+
+	inboundSize, err = io.Copy(kcpConn, srcConn)
+	srcConn.SetDeadline(time.Now())
+	kcpConn.SetDeadline(time.Now())
+	rs := <- ch
+
+	if err == nil{
+		err = rs.Err
+	}
+
+	outboundSize = rs.outboundSize
+
+	return
+}
+
 func (c *proxyBackend) RelayTCPData(src net.Conn) (inboundSize int64, outboundSize int64, err error){
 	//logger := log.GetLogger()
 
@@ -189,6 +263,14 @@ func (c *proxyBackend) RelayTCPData(src net.Conn) (inboundSize int64, outboundSi
 	if originDst, err = network.ConvertShadowSocksAddr(src.LocalAddr().String()); err != nil{
 		err = errors.Wrap(err, "Parse origin dst failed")
 		return
+	}
+
+	// try relay data through KCP is enabled and working
+	if c.kcpBackend != nil	{
+		// try to get an KCP steam connection, if not fall back to default proxy mode
+		if kcpConn, err := c.kcpBackend.GetKcpConn(); err == nil{
+			return c.relayKCPData(src, kcpConn, originDst)
+		}
 	}
 
 	var dst net.Conn
