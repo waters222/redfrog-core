@@ -4,6 +4,7 @@ import (
 	"flag"
 	. "github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/log"
+	"github.com/weishi258/redfrog-core/proxy_server/impl"
 	"go.uber.org/zap"
 	"math/rand"
 	"os"
@@ -84,9 +85,9 @@ func main(){
 		logger.Info("Read config file successful", zap.String("file", configFile))
 	}
 	logger.Info("Server config total", zap.Int("count", len(config.Servers)))
-	servers := make([]*ProxyServer, 0)
+	servers := make([]*impl.ProxyServer, 0)
 	for _, configEntry := range config.Servers{
-		if server, err := StartProxyServer(configEntry); err != nil{
+		if server, err := impl.StartProxyServer(configEntry); err != nil{
 			logger.Error("Start proxy server failed", zap.String("error",err.Error()))
 		}else{
 			servers = append(servers, server)
@@ -101,7 +102,6 @@ func main(){
 		}
 	}()
 
-
 	logger.Info("RefFrog server is up and running")
 	go func() {
 		sig := <-sigChan
@@ -111,4 +111,5 @@ func main(){
 		done <- true
 	}()
 	<-done
+
 }
