@@ -38,6 +38,7 @@ sudo iptables -t mangle -A RED_FROG_TPROXY -p udp -j TPROXY --tproxy-mark 0x1/0x
 
 sudo iptables -t mangle -N RED_FROG
 sudo iptables -t mangle -A RED_FROG  -d 10.0.0.51  -j RED_FROG_TPROXY
+sudo iptables -t mangle -A RED_FROG  -d 10.10.1.103  -j RED_FROG_TPROXY
 
 sudo iptables -t mangle -A PREROUTING -j RED_FROG
 

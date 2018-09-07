@@ -15,12 +15,12 @@ shadowsocks:
     - "gfw-list.txt"
     - "gfw-list.txt"
   servers:
-    - remote-server: "10.0.0.51:10000"
+    - remote-server: "10.10.1.103:10000"
       crypt: "AEAD_CHACHA20_POLY1305"
       Password: "123321A"
       kcptun:
-        enable: true
-        server: "10.0.0.51:10010"
+        enable: false
+        server: "10.10.1.103:10010"
         crypt: "salsa20"
         mode: "fast"
         conn: 1

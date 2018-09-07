@@ -202,60 +202,6 @@ func (c *KCPBackend)GetKcpConn() (*smux.Stream, error){
 	return kcpConn, nil
 }
 
-//func (c *KCPBackend)HandleTCPRelay(srcConn net.Conn, header []byte, timeout time.Duration) error{
-//	sess, err := c.getSession()
-//	if err != nil{
-//		return err
-//	}
-//	kcpConn, err := sess.OpenStream()
-//	if err != nil{
-//		return errors.Wrap(err, "Kcp open stream failed")
-//	}
-//
-//
-//
-//	go func(){
-//		logger := log.GetLogger()
-//		defer srcConn.Close()
-//		defer kcpConn.Close()
-//
-//		srcConn.SetWriteDeadline(time.Now().Add(timeout))
-//		kcpConn.SetWriteDeadline(time.Now().Add(timeout))
-//
-//		if _, err = kcpConn.Write(header); err != nil{
-//			logger.Error("Kcp write to remote server failed", zap.String("error", err.Error()))
-//			return
-//		}
-//
-//		ch := make(chan relayDataRes)
-//
-//		go func(){
-//			res := relayDataRes{}
-//			res.outboundSize, res.Err = io.Copy(srcConn, kcpConn)
-//			srcConn.SetDeadline(time.Now())
-//			kcpConn.SetDeadline(time.Now())
-//			ch <- res
-//		}()
-//
-//		inboundSize, err := io.Copy(kcpConn, srcConn)
-//		srcConn.SetDeadline(time.Now())
-//		kcpConn.SetDeadline(time.Now())
-//		rs := <- ch
-//
-//		if err == nil{
-//			err = rs.Err
-//		}
-//		if err != nil{
-//			logger.Debug("Kcp relay failed", zap.String("error", err.Error()))
-//		}else{
-//			logger.Debug("Kcp relay successful", zap.Int64("inbound", inboundSize), zap.Int64("outbound", rs.outboundSize))
-//		}
-//
-//	}()
-//
-//	return nil
-//
-//}
 
 
 func (c * KCPBackend)scavenger(){

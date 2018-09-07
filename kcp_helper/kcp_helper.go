@@ -14,7 +14,7 @@ func GetCipher(name string, password string) (kcp.BlockCrypt, error){
 	var err error
 	var ret kcp.BlockCrypt
 
-	pass := pbkdf2.Key([]byte(password), []byte("1111"), 4096, 32, sha1.New)
+	pass := pbkdf2.Key([]byte(password), []byte("Red_Frog_Rocks!!!"), 4096, 32, sha1.New)
 
 	switch name {
 	case "sm4":
