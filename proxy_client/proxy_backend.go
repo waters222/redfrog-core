@@ -284,8 +284,6 @@ func (c *proxyBackend)relayKCPData(srcConn net.Conn, kcpConn *smux.Stream, heade
 		res.outboundSize, res.Err = io.Copy(srcConn, kcpConn)
 		srcConn.SetDeadline(time.Now())
 		kcpConn.Close()
-		//srcConn.SetDeadline(time.Now())
-		//kcpConn.SetDeadline(time.Now())
 		ch <- res
 	}()
 
@@ -314,12 +312,16 @@ func (c *proxyBackend) RelayTCPData(src net.Conn) (inboundSize int64, outboundSi
 	// try relay data through KCP is enabled and working
 	if c.kcpBackend != nil	{
 		// try to get an KCP steam connection, if not fall back to default proxy mode
-		if kcpConn, err := c.kcpBackend.GetKcpConn(); err == nil{
-			if inboundSize, outboundSize, err = c.relayKCPData(src, kcpConn, originDst); err != nil{
-				// lets re-try using traditional
+		var kcpConn *smux.Stream
+		if kcpConn, err = c.kcpBackend.GetKcpConn(); err == nil{
+			if inboundSize, outboundSize, err = c.relayKCPData(src, kcpConn, originDst); err != nil {
 				if err.Error() != RELAY_TCP_RETRY{
+					log.GetLogger().Debug("Relay Kcp finished", zap.Int64("inbound", inboundSize), zap.Int64("outbound", outboundSize), zap.String("error", err.Error()))
 					return
 				}
+			}else{
+				log.GetLogger().Debug("Relay Kcp finished", zap.Int64("inbound", inboundSize), zap.Int64("outbound", outboundSize))
+				return
 			}
 		}
 	}

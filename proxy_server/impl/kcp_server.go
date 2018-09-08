@@ -110,9 +110,7 @@ func (c *KCPServer) handleConnection(conn io.ReadWriteCloser){
 	defer mux.Close()
 	for {
 		if kcpConn, err := mux.AcceptStream(); err != nil{
-			if err.Error() != "broken pipe"{
-				logger.Error("Kcp server accept stream failed", zap.String("error", err.Error()))
-			}
+			logger.Debug("Kcp server accept stream stopped", zap.String("error", err.Error()))
 			return
 		}else{
 			go c.handleRelay(kcpConn)
@@ -147,6 +145,7 @@ func (c *KCPServer)handleRelay(kcpConn *smux.Stream) {
 		outboundSize, err := io.Copy(remoteConn, kcpConn)
 		remoteConn.SetDeadline(time.Now())
 		kcpConn.Close()
+
 		//remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 		//kcpConn.SetDeadline(time.Now())  // wake up the other goroutine blocking on left
 		ch <- res{outboundSize, err}
@@ -155,6 +154,7 @@ func (c *KCPServer)handleRelay(kcpConn *smux.Stream) {
 	inboundSize, err := io.Copy(kcpConn, remoteConn)
 	remoteConn.SetDeadline(time.Now())
 	kcpConn.Close()
+
 	//remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 	//kcpConn.SetDeadline(time.Now())  // wake up the other goroutine blocking on left
 	rs := <-ch
@@ -162,15 +162,10 @@ func (c *KCPServer)handleRelay(kcpConn *smux.Stream) {
 	if err == nil {
 		err = rs.Err
 	}
-	if err != nil {
-		if ee, ok := err.(net.Error); ok && ee.Timeout() {
-			logger.Debug("Kcp relay successful", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize))
-		}else if err.Error() == "broken pipe"{
-			logger.Debug("Kcp relay successful", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize))
-		}else{
-			logger.Error("Kcp relay failed", zap.String("error", err.Error()))
-		}
+	if err != nil{
+		logger.Debug("Kcp relay finished", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize), zap.String("error", err.Error()))
 	}else{
-		logger.Debug("Kcp relay successful", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize))
+		logger.Debug("Kcp relay finished", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize))
 	}
+
 }
