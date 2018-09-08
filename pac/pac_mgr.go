@@ -56,57 +56,57 @@ type PacListMgr struct{
 
 }
 
-
-func (c *PacListMgr)startMonitorPacList(){
-	logger := log.GetLogger()
-
-	go func(){
-		for{
-			select {
-				case <- c.ticker.C:
-					bPacListHasChanged := false
-					func(){
-						c.pacListsMux.Lock()
-						defer c.pacListsMux.Unlock()
-
-						for path, pacList := range c.pacLists{
-							if lastModified, err := os.Stat(path); err != nil{
-								logger.Error("Get file stat failed", zap.String("file", path), zap.String("error", err.Error()))
-							}else{
-								if pacList.lastModified.Before(lastModified.ModTime()){
-									logger.Info("Pac list file has modified since last time, so re-evaluation", zap.String("file", path))
-									pacList.lastModified = lastModified.ModTime()
-									// lets do re-loading
-
-									if newPacList, err := parsePacList(path); err == nil{
-										if !pacList.equal(newPacList){
-											// its not equal so using the new domains
-											pacList.Domains = newPacList.Domains
-											pacList.IPs = newPacList.IPs
-											// set changed flag to true
-											bPacListHasChanged = true
-											logger.Info("Pac file content has changed", zap.String("file", path))
-										}
-									}
-								}
-							}
-						}
-					}()
-
-					if bPacListHasChanged{
-						//
-						c.composeProxyList()
-					}
-			}
-		}
-	}()
-	logger.Info("Start pac list files monitor")
-}
-func (c *PacListMgr)stopMonitorPackList(){
-	logger := log.GetLogger()
-	c.ticker.Stop()
-	logger.Info("Stop pac list files monitor")
-}
+//
+//func (c *PacListMgr)startMonitorPacList(){
+//	logger := log.GetLogger()
+//
+//	go func(){
+//		for{
+//			select {
+//				case <- c.ticker.C:
+//					bPacListHasChanged := false
+//					func(){
+//						c.pacListsMux.Lock()
+//						defer c.pacListsMux.Unlock()
+//
+//						for path, pacList := range c.pacLists{
+//							if lastModified, err := os.Stat(path); err != nil{
+//								logger.Error("Get file stat failed", zap.String("file", path), zap.String("error", err.Error()))
+//							}else{
+//								if pacList.lastModified.Before(lastModified.ModTime()){
+//									logger.Info("Pac list file has modified since last time, so re-evaluation", zap.String("file", path))
+//									pacList.lastModified = lastModified.ModTime()
+//									// lets do re-loading
+//
+//									if newPacList, err := parsePacList(path); err == nil{
+//										if !pacList.equal(newPacList){
+//											// its not equal so using the new domains
+//											pacList.Domains = newPacList.Domains
+//											pacList.IPs = newPacList.IPs
+//											// set changed flag to true
+//											bPacListHasChanged = true
+//											logger.Info("Pac file content has changed", zap.String("file", path))
+//										}
+//									}
+//								}
+//							}
+//						}
+//					}()
+//
+//					if bPacListHasChanged{
+//						//
+//						c.composeProxyList()
+//					}
+//			}
+//		}
+//	}()
+//	logger.Info("Start pac list files monitor")
+//}
+//func (c *PacListMgr)stopMonitorPackList(){
+//	logger := log.GetLogger()
+//	c.ticker.Stop()
+//	logger.Info("Stop pac list files monitor")
+//}
 
 func (c* PacListMgr)composeProxyList(){
 	logger := log.GetLogger()
@@ -137,7 +137,7 @@ func (c* PacListMgr)composeProxyList(){
 
 	logger.Info("Composing new proxy_client list finished, start to populate routing table")
 	// now lets re-populate routing table
-	c.routingMgr.ReloadPacList(proxyDomains, proxyIPs)
+	c.routingMgr.LoadPacList(proxyDomains, proxyIPs)
 }
 
 func StartPacListMgr(routingMgr *routing.RoutingMgr) (ret *PacListMgr, err error){
@@ -151,14 +151,12 @@ func StartPacListMgr(routingMgr *routing.RoutingMgr) (ret *PacListMgr, err error
 	ret.proxyList.proxyDomains = make(map[string]bool)
 	ret.proxyList.proxyIPs = make(map[string]bool)
 	ret.ticker = time.NewTicker(time.Second * MONITOR_INTERVAL)
-	ret.startMonitorPacList()
 
 	logger.Info("Start pac List Manager successful")
 	return
 }
 func (c *PacListMgr)Stop(){
 	logger := log.GetLogger()
-	c.stopMonitorPackList()
 	logger.Info("Stop pac List Manager successful")
 }
 
@@ -181,8 +179,10 @@ func (c *PacListMgr)ReadPacList(paths []string){
 
 	}
 	c.composeProxyList()
+	// now lets populate routing table
 	return
 }
+
 
 func (c *PacListMgr)AddDomain(domain string){
 	c.proxyList.mux.Lock()

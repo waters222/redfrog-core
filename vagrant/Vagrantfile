@@ -37,8 +37,6 @@ sudo iptables -t mangle -A RED_FROG_TPROXY -p tcp -j TPROXY --tproxy-mark 0x1/0x
 sudo iptables -t mangle -A RED_FROG_TPROXY -p udp -j TPROXY --tproxy-mark 0x1/0x1 --on-port 9090
 
 sudo iptables -t mangle -N RED_FROG
-sudo iptables -t mangle -A RED_FROG  -d 10.0.0.51  -j RED_FROG_TPROXY
-sudo iptables -t mangle -A RED_FROG  -d 10.10.1.103  -j RED_FROG_TPROXY
 
 sudo iptables -t mangle -A PREROUTING -j RED_FROG
 
@@ -55,7 +53,6 @@ sudo ip6tables -t mangle -A RED_FROG_TPROXY -p tcp -j TPROXY --tproxy-mark 0x1/0
 sudo ip6tables -t mangle -A RED_FROG_TPROXY -p udp -j TPROXY --tproxy-mark 0x1/0x1 --on-port 9090
 
 sudo ip6tables -t mangle -N RED_FROG
-sudo ip6tables -t mangle -A RED_FROG  -d 10.0.0.51 -j RED_FROG_TPROXY
 
 sudo iptables -t mangle -A PREROUTING  -j RED_FROG
 

@@ -7,8 +7,12 @@ import (
 	"github.com/weishi258/redfrog-core/common"
 	"github.com/weishi258/redfrog-core/log"
 	"go.uber.org/zap"
+	"gopkg.in/yaml.v2"
+	"io/ioutil"
 	"net"
+	"os"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -17,10 +21,19 @@ const (
 	CHAIN_TPROXY = "RED_FROG_TPROXY"
 	CHAIN_RED_FROG = "RED_FROG"
 	CHAIN_PREROUTING = "PREROUTING"
+
+)
+const (
+	CACHE_PATH = "routing_mgr_cache.yaml"
 )
 
+type RoutingMgrCache struct {
+	IPv4	map[string][]net.IP	`yaml:"ipv4"`
+	IPv6	map[string][]net.IP	`yaml:"ipv6"`
+}
+
 type RoutingMgr struct{
-	mux				sync.RWMutex
+	sync.RWMutex
 	ipListV4		map[string][]net.IP
 	ipListV6		map[string][]net.IP
 
@@ -51,22 +64,22 @@ func StartRoutingMgr(port int, mark string) (ret *RoutingMgr, err error){
 		return
 	}
 	logger.Info("IPTables v4 successful created")
-	//
-	//if ret.ip6tbl, err = iptables.NewWithProtocol(iptables.ProtocolIPv6); err != nil{
-	//	err = errors.Wrap(err, "Create IPTables handler failed")
-	//	return
-	//}
-	//
-	//if err = ret.createDivertChain(port, mark, true); err != nil{
-	//	return
-	//}
-	//if err = ret.createRedFrogChain(true); err != nil{
-	//	return
-	//}
-	//if err = ret.initPreRoutingChain(true); err != nil{
-	//	return
-	//}
-	//logger.Info("IPTables v6 successful created")
+
+	if ret.ip6tbl, err = iptables.NewWithProtocol(iptables.ProtocolIPv6); err != nil{
+		err = errors.Wrap(err, "Create IPTables handler failed")
+		return
+	}
+
+	if err = ret.createDivertChain(port, mark, true); err != nil{
+		return
+	}
+	if err = ret.createRedFrogChain(true); err != nil{
+		return
+	}
+	if err = ret.initPreRoutingChain(true); err != nil{
+		return
+	}
+	logger.Info("IPTables v6 successful created")
 	logger.Info("Init routing manager successful")
 	return
 }
@@ -134,18 +147,66 @@ func (c* RoutingMgr)clearIPTables(iptbl *iptables.IPTables){
 
 func (c *RoutingMgr) Stop(){
 	logger := log.GetLogger()
+	c.serializeRoutingTable()
+
 	c.clearIPTables(c.ip4tbl)
-	//c.clearIPTables(c.ip6tbl)
+	c.clearIPTables(c.ip6tbl)
 	logger.Info("Stop routing manager")
 }
+
+func (c *RoutingMgr)serializeRoutingTable() (err error){
+	file, err := os.Create(CACHE_PATH) // For read access.
+	if err != nil {
+		err = errors.Wrapf(err, "Create routing cache file %s failed", CACHE_PATH)
+		return
+	}
+	defer file.Close()
+	c.Lock()
+	defer c.Unlock()
+	cache := &RoutingMgrCache{c.ipListV4, c.ipListV6}
+	data, err := yaml.Marshal(cache)
+	if err != nil{
+		err = errors.Wrap(err, "Marshal routing cache failed")
+		return
+	}
+
+	if _, err = file.Write(data); err != nil{
+		err = errors.Wrapf(err, "Write to routing cache file %s failed", CACHE_PATH)
+	}
+
+	return
+}
+
+func (c *RoutingMgr)deserializeRoutingTable() (ret *RoutingMgrCache, err error){
+	file, err := os.Open(CACHE_PATH) // For read access.
+	if err != nil {
+		err = errors.Wrapf(err, "Create routing cache file %s failed", CACHE_PATH)
+		return
+	}
+	defer file.Close()
+
+	data, err := ioutil.ReadAll(file)
+	if err != nil {
+		err = errors.Wrapf(err, "Create routing cache file %s failed", CACHE_PATH)
+		return
+	}
+
+	ret = &RoutingMgrCache{}
+	if err = yaml.Unmarshal(data, ret); err != nil{
+		err = errors.Wrapf(err, "Create routing cache file %s failed", CACHE_PATH)
+
+	}
+	return
+}
+
 func (c *RoutingMgr) AddIPStr(domain string, input string) (err error){
 	return c.AddIp(domain, net.ParseIP(input))
 }
 
 
 func (c *RoutingMgr)isChanged(domain string, ip net.IP, isIPv6 bool) bool{
-	c.mux.Lock()
-	defer c.mux.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
 	var ipMap map[string][]net.IP
 
@@ -197,8 +258,8 @@ func (c *RoutingMgr)PopulateRoutingTable() (err error){
 	logger := log.GetLogger()
 	logger.Info("Populate routing table")
 
-	c.mux.RLock()
-	defer c.mux.RUnlock()
+	c.RLock()
+	defer c.RUnlock()
 
 	for domain, ips :=range c.ipListV4{
 		for _, ip := range ips {
@@ -222,66 +283,102 @@ func (c *RoutingMgr)PopulateRoutingTable() (err error){
 	return
 }
 
-func (c *RoutingMgr)ReloadPacList(domains map[string]bool, ips map[string]bool){
+func (c *RoutingMgr) LoadPacList(domains map[string]bool, ips map[string]bool){
+	logger := log.GetLogger()
 
-	ipListV4 := make(map[string][]net.IP)
-	ipListV6 := make(map[string][]net.IP)
-
+	c.Lock()
+	ipv4tablesList := make([]string, 0)
+	ipv6tablesList := make([]string, 0)
 	for ipInput, bDomainListType := range ips{
 		if bDomainListType == common.DOMAIN_BLACK_LIST{
 			ip := net.ParseIP(ipInput)
-			if len(ip) == net.IPv4len{
-				ipListV4[ipInput] = []net.IP{ip}
-			}else if len(ip) == net.IPv6len{
-				ipListV6[ipInput] = []net.IP{ip}
+			if isIPv4 := ip.To4(); isIPv4 != nil{
+				c.ipListV4[ipInput] = []net.IP{ip}
+				ipv4tablesList = append(ipv4tablesList, ip.String())
+			}else{
+				ipv6tablesList = append(ipv6tablesList, ip.String())
+				c.ipListV6[ipInput] = []net.IP{ip}
 			}
+
 		}
 
 	}
-	bChanged := func() bool{
-		c.mux.RLock()
-		defer c.mux.RUnlock()
+	if cache, err := c.deserializeRoutingTable(); err != nil{
+		logger.Error("Reading routing cache failed", zap.String("error", err.Error()))
+
 		for domain, bDomainListType := range domains{
 			if bDomainListType == common.DOMAIN_BLACK_LIST{
-				if ips, ok := c.ipListV4[domain]; ok {
-					ipListV4[domain] = ips
-				}
-				if ips, ok := c.ipListV6[domain]; ok {
-					ipListV6[domain] = ips
-				}
+				c.ipListV4[domain] = []net.IP{}
+				c.ipListV6[domain] = []net.IP{}
 			}
 		}
-		if len(ipListV4) == len(c.ipListV4) &&
-			len(ipListV6) == len(c.ipListV6){
-			// do nothing since there is no change
-			return false
+	}else{
+		for domain, bDomainListType := range domains{
+			if bDomainListType == common.DOMAIN_BLACK_LIST{
+				if ips, ok := cache.IPv4[domain]; ok{
+					c.ipListV4[domain] = ips
+					for _, ip := range ips{
+						ipv4tablesList = append(ipv4tablesList, ip.String())
+					}
+				}
+				if ips, ok := cache.IPv6[domain]; ok{
+					c.ipListV6[domain] = ips
+					for _, ip := range ips{
+						ipv6tablesList = append(ipv6tablesList, ip.String())
+					}
+				}
+
+			}
 		}
-		return true
-
-	} ()
-
-	if bChanged {
-		c.mux.Lock()
-		defer c.mux.Unlock()
-
-		c.ipListV4 = ipListV4
-		c.ipListV6 = ipListV6
 	}
+	c.Unlock()
+
+	logger.Info("Load pac list finished")
+
+	if len(ipv4tablesList) > 0{
+		ips := strings.Join(ipv4tablesList,",")
+		c.ip4tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ips, "-j", CHAIN_TPROXY)
+		logger.Debug("Routing table add ipv4", zap.String("ip", ips))
+	}
+	if len(ipv6tablesList) > 0{
+		ips := strings.Join(ipv6tablesList,",")
+		c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ips, "-j", CHAIN_TPROXY)
+		logger.Debug("Routing table add ipv6", zap.String("ip", ips))
+	}
+
 }
+//func (c *RoutingMgr)routingTableAddIPV4Multiple(ips[] net.IP) (err error){
+//	logger := log.GetLogger()
+//	strs := make([]string, len(ips))
+//	for idx := range ips{
+//		strs[idx] = ips[idx].String()
+//	}
+//	ipsStr := strings.Join(strs,",")
+//	logger.Debug("routing table add ipv4", zap.String("ip", ipsStr))
+//	c.ip4tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ipsStr, "-j", CHAIN_TPROXY)
+//	return
+//}
+//func (c *RoutingMgr)routingTableAddIPV6Multiple(ips[] net.IP) (err error){
+//	logger := log.GetLogger()
+//	strs := make([]string, len(ips))
+//	for idx := range ips{
+//		strs[idx] = ips[idx].String()
+//	}
+//	ipsStr := strings.Join(strs,",")
+//	logger.Debug("routing table add ipv6", zap.String("ip", ipsStr))
+//	c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ipsStr, "-j", CHAIN_TPROXY)
+//	return
+//}
 
 func (c *RoutingMgr)routingTableAddIPV4(ip net.IP) (err error){
 	logger := log.GetLogger()
 	logger.Debug("routing table add ipv4", zap.String("ip", ip.String()))
 	c.ip4tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY)
-	//c.ip4tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "tcp", "-d", ip.String(), "-j", CHAIN_TPROXY)
-	//c.ip4tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "udp", "-d", ip.String(), "-j", CHAIN_TPROXY)
 	return
 }
 func (c *RoutingMgr)routingTableAddIPV6(ip net.IP) (err error){
 	logger := log.GetLogger()
 	logger.Debug("routing table add ipv6", zap.String("ip", ip.String()))
-	//c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY)
-	//c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "tcp", "-d", ip.String(), "-j", CHAIN_TPROXY)
-	//c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "udp", "-d", ip.String(), "-j", CHAIN_TPROXY)
+	c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY)
 	return
 }

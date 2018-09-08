@@ -144,19 +144,19 @@ func (c *KCPServer)handleRelay(kcpConn *smux.Stream) {
 
 	go func() {
 		outboundSize, err := io.Copy(remoteConn, kcpConn)
-		remoteConn.Close()
-		kcpConn.Close()
+		//remoteConn.Close()
+		//kcpConn.Close()
 		//close(ch)
-		//remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-		//kcpConn.SetDeadline(time.Now())  // wake up the other goroutine blocking on left
+		remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+		kcpConn.SetDeadline(time.Now())  // wake up the other goroutine blocking on left
 		ch <- res{outboundSize, err}
 	}()
 
 	inboundSize, err := io.Copy(kcpConn, remoteConn)
-	remoteConn.Close()
-	kcpConn.Close()
-	//remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-	//kcpConn.SetDeadline(time.Now())  // wake up the other goroutine blocking on left
+	//remoteConn.Close()
+	//kcpConn.Close()
+	remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+	kcpConn.SetDeadline(time.Now())  // wake up the other goroutine blocking on left
 	rs := <-ch
 
 	if err == nil {
