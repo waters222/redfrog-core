@@ -1,6 +1,9 @@
 
 # Created by https://www.gitignore.io/api/go,linux,macos,windows
 ### Customized ###
+
+routing_mgr_cache.yaml
+
 *~
 .DS_Store
 .vagrant

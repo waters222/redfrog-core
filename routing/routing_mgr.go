@@ -95,6 +95,7 @@ func (c *RoutingMgr) createDivertChain(port int, mark string, isIPv6 bool) (err 
 	}
 	handler.Append(TABLE_MANGLE, CHAIN_TPROXY, "-p", "tcp", "-j", "TPROXY", "--tproxy-mark", mark, "--on-port", strconv.FormatInt(int64(port), 10))
 	handler.Append(TABLE_MANGLE, CHAIN_TPROXY, "-p", "udp", "-j", "TPROXY", "--tproxy-mark", mark, "--on-port", strconv.FormatInt(int64(port), 10))
+	handler.Append(TABLE_MANGLE, CHAIN_TPROXY, "-j", "ACCEPT")
 	return
 }
 
@@ -347,28 +348,6 @@ func (c *RoutingMgr) LoadPacList(domains map[string]bool, ips map[string]bool){
 	}
 
 }
-//func (c *RoutingMgr)routingTableAddIPV4Multiple(ips[] net.IP) (err error){
-//	logger := log.GetLogger()
-//	strs := make([]string, len(ips))
-//	for idx := range ips{
-//		strs[idx] = ips[idx].String()
-//	}
-//	ipsStr := strings.Join(strs,",")
-//	logger.Debug("routing table add ipv4", zap.String("ip", ipsStr))
-//	c.ip4tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ipsStr, "-j", CHAIN_TPROXY)
-//	return
-//}
-//func (c *RoutingMgr)routingTableAddIPV6Multiple(ips[] net.IP) (err error){
-//	logger := log.GetLogger()
-//	strs := make([]string, len(ips))
-//	for idx := range ips{
-//		strs[idx] = ips[idx].String()
-//	}
-//	ipsStr := strings.Join(strs,",")
-//	logger.Debug("routing table add ipv6", zap.String("ip", ipsStr))
-//	c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ipsStr, "-j", CHAIN_TPROXY)
-//	return
-//}
 
 func (c *RoutingMgr)routingTableAddIPV4(ip net.IP) (err error){
 	logger := log.GetLogger()
