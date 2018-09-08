@@ -31,6 +31,10 @@ type proxyBackend struct{
 	kcpBackend		*KCPBackend
 }
 
+
+const (
+	RELAY_TCP_RETRY = "Kcp relay tcp failed when write header"
+)
 // dns
 type dnsNatMap struct {
 	sync.RWMutex
@@ -115,13 +119,14 @@ type udpOrigDstMap struct{
 }
 
 
-func (c * udpOrigDstMap)Get(key string) chan dstMapChannel{
+func (c * udpOrigDstMap)Send(key string, ch dstMapChannel) bool{
 	c.RLock()
 	defer c.RUnlock()
-	if ret, ok := c.channels[key]; ok{
-		return ret
+	if channel, ok := c.channels[key]; ok{
+		channel <- ch
+		return true
 	}else{
-		return nil
+		return false
 	}
 }
 
@@ -267,7 +272,8 @@ func (c *proxyBackend)relayKCPData(srcConn net.Conn, kcpConn *smux.Stream, heade
 	kcpConn.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
 
 	if _, err = kcpConn.Write(header); err != nil{
-		err = errors.Wrap(err, "Kcp write to remote server failed")
+		log.GetLogger().Error(RELAY_TCP_RETRY, zap.String("err", err.Error()))
+		err = errors.New(RELAY_TCP_RETRY)
 		return
 	}
 
@@ -277,13 +283,15 @@ func (c *proxyBackend)relayKCPData(srcConn net.Conn, kcpConn *smux.Stream, heade
 		res := relayDataRes{}
 		res.outboundSize, res.Err = io.Copy(srcConn, kcpConn)
 		srcConn.SetDeadline(time.Now())
-		kcpConn.SetDeadline(time.Now())
+		kcpConn.Close()
+		//srcConn.SetDeadline(time.Now())
+		//kcpConn.SetDeadline(time.Now())
 		ch <- res
 	}()
 
 	inboundSize, err = io.Copy(kcpConn, srcConn)
 	srcConn.SetDeadline(time.Now())
-	kcpConn.SetDeadline(time.Now())
+	kcpConn.Close()
 	rs := <- ch
 
 	if err == nil{
@@ -296,7 +304,6 @@ func (c *proxyBackend)relayKCPData(srcConn net.Conn, kcpConn *smux.Stream, heade
 }
 
 func (c *proxyBackend) RelayTCPData(src net.Conn) (inboundSize int64, outboundSize int64, err error){
-	//logger := log.GetLogger()
 
 	var originDst []byte
 	if originDst, err = network.ConvertShadowSocksAddr(src.LocalAddr().String()); err != nil{
@@ -308,7 +315,12 @@ func (c *proxyBackend) RelayTCPData(src net.Conn) (inboundSize int64, outboundSi
 	if c.kcpBackend != nil	{
 		// try to get an KCP steam connection, if not fall back to default proxy mode
 		if kcpConn, err := c.kcpBackend.GetKcpConn(); err == nil{
-			return c.relayKCPData(src, kcpConn, originDst)
+			if inboundSize, outboundSize, err = c.relayKCPData(src, kcpConn, originDst); err != nil{
+				// lets re-try using traditional
+				if err.Error() != RELAY_TCP_RETRY{
+					return
+				}
+			}
 		}
 	}
 
@@ -353,12 +365,13 @@ func (c *proxyBackend) RelayTCPData(src net.Conn) (inboundSize int64, outboundSi
 func (c* proxyBackend) writeBackUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, payload []byte){
 	logger := log.GetLogger()
 	chanKey := dstAddr.String()
-	dstChannel := c.udpOrigDstMap_.Get(chanKey)
-	if dstChannel == nil{
+
+	signal := dstMapChannel{srcAddr, payload}
+	if !c.udpOrigDstMap_.Send(chanKey, signal) {
 		if srcConn, err := network.DialTransparentUDP(dstAddr); err != nil{
 			logger.Error("UDP proxy listen using transparent failed", zap.String("error", err.Error()))
 		}else{
-			dstChannel = make(chan dstMapChannel)
+			dstChannel := make(chan dstMapChannel)
 			c.udpOrigDstMap_.Add(chanKey, dstChannel)
 			go func(){
 				defer srcConn.Close()
@@ -391,11 +404,11 @@ func (c* proxyBackend) writeBackUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAd
 				}
 
 			}()
+			c.udpOrigDstMap_.Send(chanKey, signal)
 		}
-
 	}
-	logger.Debug("Send to dst map channel", zap.String("srcAddr", srcAddr.String()), zap.String("dstAddr", dstAddr.String()))
-	dstChannel <- dstMapChannel{srcAddr, payload}
+	//logger.Debug("Send to dst map channel", zap.String("srcAddr", srcAddr.String()), zap.String("dstAddr", dstAddr.String()))
+	//dstChannel <- dstMapChannel{srcAddr, payload}
 }
 
 func (c *proxyBackend) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, leakyBuffer *common.LeakyBuffer, data *bytes.Buffer, dataLen int) error{
@@ -450,18 +463,7 @@ func (c *proxyBackend) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, 
 				}else{
 					logger.Info("UDP read from remote too small, so not write back", zap.Int("n", n), zap.Int("headerLen", headerLen))
 				}
-
 			}
-
-			// should check header
-			//if n > len(c.header_) {
-			//	logger.Debug("Write back to origin", zap.String("addr", c.srcAddr_.String()))
-			//	if _, err = c.src_.WriteTo(buffer[len(c.header_):n], c.srcAddr_); err != nil{
-			//		return err
-			//	}
-			//}else{
-			//	return errors.New(fmt.Sprintf("UDP Read too few bytes: %d", n))
-			//}
 		}()
 	}
 

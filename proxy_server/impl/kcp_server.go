@@ -108,14 +108,15 @@ func (c *KCPServer) handleConnection(conn io.ReadWriteCloser){
 		return
 	}
 	defer mux.Close()
-
 	for {
-		kcpConn, err := mux.AcceptStream()
-		if err != nil {
-			logger.Error("Kcp server accept stream failed", zap.String("error", err.Error()))
+		if kcpConn, err := mux.AcceptStream(); err != nil{
+			if err.Error() != "broken pipe"{
+				logger.Error("Kcp server accept stream failed", zap.String("error", err.Error()))
+			}
 			return
+		}else{
+			go c.handleRelay(kcpConn)
 		}
-		go c.handleRelay(kcpConn)
 	}
 }
 func (c *KCPServer)handleRelay(kcpConn *smux.Stream) {
@@ -144,19 +145,18 @@ func (c *KCPServer)handleRelay(kcpConn *smux.Stream) {
 
 	go func() {
 		outboundSize, err := io.Copy(remoteConn, kcpConn)
-		//remoteConn.Close()
-		//kcpConn.Close()
-		//close(ch)
-		remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-		kcpConn.SetDeadline(time.Now())  // wake up the other goroutine blocking on left
+		remoteConn.SetDeadline(time.Now())
+		kcpConn.Close()
+		//remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+		//kcpConn.SetDeadline(time.Now())  // wake up the other goroutine blocking on left
 		ch <- res{outboundSize, err}
 	}()
 
 	inboundSize, err := io.Copy(kcpConn, remoteConn)
-	//remoteConn.Close()
-	//kcpConn.Close()
-	remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-	kcpConn.SetDeadline(time.Now())  // wake up the other goroutine blocking on left
+	remoteConn.SetDeadline(time.Now())
+	kcpConn.Close()
+	//remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+	//kcpConn.SetDeadline(time.Now())  // wake up the other goroutine blocking on left
 	rs := <-ch
 
 	if err == nil {
@@ -164,6 +164,8 @@ func (c *KCPServer)handleRelay(kcpConn *smux.Stream) {
 	}
 	if err != nil {
 		if ee, ok := err.(net.Error); ok && ee.Timeout() {
+			logger.Debug("Kcp relay successful", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize))
+		}else if err.Error() == "broken pipe"{
 			logger.Debug("Kcp relay successful", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize))
 		}else{
 			logger.Error("Kcp relay failed", zap.String("error", err.Error()))

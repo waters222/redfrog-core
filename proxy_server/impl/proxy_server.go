@@ -294,7 +294,9 @@ func (c *ProxyServer)copyFromRemote(remoteConn *net.UDPConn, dstAddr *net.UDPAdd
 		remoteConn.SetReadDeadline(time.Now().Add(c.udpTimeout_))
 		dataLen, _, err := remoteConn.ReadFrom(remoteBuffer.Bytes())
 		if err != nil{
-			logger.Debug("UDP read from remote failed", zap.String("error", err.Error()))
+			if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
+				logger.Debug("UDP read from remote failed", zap.String("error", err.Error()))
+			}
 			return
 		}
 		// lets write back
