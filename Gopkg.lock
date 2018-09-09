@@ -76,6 +76,12 @@
   version = "v1.1"
 
 [[projects]]
+  name = "github.com/weishi258/kcp-go"
+  packages = ["."]
+  revision = "60be01eef6f665151bfbcde38429ee1d8710f68f"
+  version = "v4.0"
+
+[[projects]]
   name = "github.com/xtaci/kcp-go"
   packages = ["."]
   revision = "60be01eef6f665151bfbcde38429ee1d8710f68f"
@@ -161,6 +167,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "06e5cfae87ae0c13fc8e10d1e2d290742ba4e1bb8d34a59f604dbbc745616f83"
+  inputs-digest = "33f2790b566db6b9190892537af8318a10cfca0638f0e1112978b4d199a38a9d"
   solver-name = "gps-cdcl"
   solver-version = 1

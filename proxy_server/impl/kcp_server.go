@@ -7,7 +7,7 @@ import (
 	"github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/kcp_helper"
 	"github.com/weishi258/redfrog-core/log"
-	"github.com/xtaci/kcp-go"
+	"github.com/weishi258/kcp-go"
 	"github.com/xtaci/smux"
 	"go.uber.org/zap"
 	"io"

@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"github.com/golang/snappy"
 	"github.com/pkg/errors"
-	"github.com/xtaci/kcp-go"
+	"github.com/weishi258/kcp-go"
+	"github.com/weishi258/kcp-go"
 	"golang.org/x/crypto/pbkdf2"
 	"net"
 )
@@ -40,6 +41,8 @@ func GetCipher(name string, password string) (kcp.BlockCrypt, error){
 	case "xtea":
 		ret, _ = kcp.NewXTEABlockCrypt(pass[:16])
 	case "salsa20":
+		ret, _ = kcp.NewSalsa20BlockCrypt(pass)
+	case "AEAD_CHACHA20_POLY1305":
 		ret, _ = kcp.NewSalsa20BlockCrypt(pass)
 	default:
 		err = errors.New(fmt.Sprintf("Unknown Kcp cither %s",  name))
