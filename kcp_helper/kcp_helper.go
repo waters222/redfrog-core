@@ -6,44 +6,22 @@ import (
 	"github.com/golang/snappy"
 	"github.com/pkg/errors"
 	"github.com/weishi258/kcp-go"
-	"github.com/weishi258/kcp-go"
 	"golang.org/x/crypto/pbkdf2"
 	"net"
 )
 
-func GetCipher(name string, password string) (kcp.BlockCrypt, error){
-	var err error
-	var ret kcp.BlockCrypt
-
+func GetCipher(name string, password string) (ret kcp.AheadCipher, err error){
 	pass := pbkdf2.Key([]byte(password), []byte("Red_Frog_Rocks!!!"), 4096, 32, sha1.New)
 
 	switch name {
-	case "sm4":
-		ret, _ = kcp.NewSM4BlockCrypt(pass[:16])
-	case "tea":
-		ret, _ = kcp.NewTEABlockCrypt(pass[:16])
-	case "xor":
-		ret, _ = kcp.NewSimpleXORBlockCrypt(pass)
-	case "none":
-		ret, _ =  kcp.NewNoneBlockCrypt(pass)
-	case "aes-128":
-		ret, _ = kcp.NewAESBlockCrypt(pass[:16])
-	case "aes-192":
-		ret, _ = kcp.NewAESBlockCrypt(pass[:24])
-	case "blowfish":
-		ret, _ = kcp.NewBlowfishBlockCrypt(pass)
-	case "twofish":
-		ret, _ = kcp.NewTwofishBlockCrypt(pass)
-	case "cast5":
-		ret, _ = kcp.NewCast5BlockCrypt(pass[:16])
-	case "3des":
-		ret, _ = kcp.NewTripleDESBlockCrypt(pass[:24])
-	case "xtea":
-		ret, _ = kcp.NewXTEABlockCrypt(pass[:16])
-	case "salsa20":
-		ret, _ = kcp.NewSalsa20BlockCrypt(pass)
 	case "AEAD_CHACHA20_POLY1305":
-		ret, _ = kcp.NewSalsa20BlockCrypt(pass)
+		ret, _ = kcp.NewChacha20Ploy1305(pass[:32])
+	case "AES-128-GCM":
+		ret, _ = kcp.NewAES128GCM(pass[:16])
+	case "AES-196-GCM":
+		ret, _ = kcp.NewAES196GCM(pass[:24])
+	case "AES-256-GCM":
+		ret, _ = kcp.NewAES256GCM(pass[:32])
 	default:
 		err = errors.New(fmt.Sprintf("Unknown Kcp cither %s",  name))
 	}

@@ -207,7 +207,7 @@ func CreateProxyBackend(config config.RemoteServerConfig, tcpTimeout int, udpTim
 	ret.udpOrigDstMap_ = &udpOrigDstMap{channels: make(map[string]chan dstMapChannel)}
 
 	if config.Kcptun.Enable{
-		if ret.kcpBackend, err = StartKCPBackend(config.Kcptun, config.Kcptun.Crypt, config.Password); err != nil{
+		if ret.kcpBackend, err = StartKCPBackend(config.Kcptun, config.Crypt, config.Password); err != nil{
 			err = errors.Wrap(err, "Create KCP backend failed")
 		}
 	}

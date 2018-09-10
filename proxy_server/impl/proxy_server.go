@@ -101,7 +101,7 @@ func StartProxyServer(config config.ServerConfig) (ret *ProxyServer, err error) 
 	}
 	//
 	if config.Kcptun.Enable{
-		if ret.kcpServer, err = StartKCPServer(config.Kcptun, config.Kcptun.Crypt, config.Password, config.TcpTimeout); err != nil{
+		if ret.kcpServer, err = StartKCPServer(config.Kcptun, config.Crypt, config.Password, config.TcpTimeout); err != nil{
 			ret.tcpListener_.Close()
 			ret.udpListener_.Close()
 			err = errors.Wrap(err, "Start KCP server failed")

@@ -25,7 +25,7 @@ type muxConn struct {
 type KCPBackend struct {
 	smuxConfig		*smux.Config
 	config 			config.KcptunConfig
-	cipher			kcp.BlockCrypt
+	cipher			kcp.AheadCipher
 
 	muxConns		[]muxConn
 	scavengers		chan *smux.Session
@@ -115,7 +115,7 @@ func (c *KCPBackend)waitConn() *smux.Session{
 }
 
 func (c * KCPBackend)createConn() (ret *smux.Session, err error){
-	kcpConn, err := kcp.DialWithOptions(c.config.Server, c.cipher, c.config.Datashard, c.config.Parityshard)
+	kcpConn, err := kcp.DialWithOptionsAhead(c.config.Server, c.cipher, c.config.Datashard, c.config.Parityshard)
 	if err != nil{
 		err = errors.Wrap(err, "Kcp create connection failed")
 		return

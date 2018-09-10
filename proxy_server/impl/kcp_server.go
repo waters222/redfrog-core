@@ -7,8 +7,8 @@ import (
 	"github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/kcp_helper"
 	"github.com/weishi258/redfrog-core/log"
-	"github.com/weishi258/kcp-go"
 	"github.com/xtaci/smux"
+	"github.com/weishi258/kcp-go"
 	"go.uber.org/zap"
 	"io"
 	"net"
@@ -17,7 +17,7 @@ import (
 
 type KCPServer struct {
 	config 			config.KcptunConfig
-	cipher			kcp.BlockCrypt
+	cipher			kcp.AheadCipher
 	listener		*kcp.Listener
 	timeout			time.Duration
 
@@ -40,7 +40,7 @@ func StartKCPServer(config config.KcptunConfig, crypt string, password string, t
 	}
 
 
-	if ret.listener, err = kcp.ListenWithOptions(fmt.Sprintf("0.0.0.0:%d", ret.config.ListenPort), ret.cipher, ret.config.Datashard, ret.config.Parityshard); err != nil{
+	if ret.listener, err = kcp.ListenWithOptionsAhead(fmt.Sprintf("0.0.0.0:%d", ret.config.ListenPort), ret.cipher, ret.config.Datashard, ret.config.Parityshard); err != nil{
 		err = errors.Wrap(err, "Kcp Listen failed")
 		return
 	}

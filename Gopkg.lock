@@ -76,18 +76,6 @@
   version = "v1.1"
 
 [[projects]]
-  name = "github.com/weishi258/kcp-go"
-  packages = ["."]
-  revision = "60be01eef6f665151bfbcde38429ee1d8710f68f"
-  version = "v4.0"
-
-[[projects]]
-  name = "github.com/xtaci/kcp-go"
-  packages = ["."]
-  revision = "60be01eef6f665151bfbcde38429ee1d8710f68f"
-  version = "v4.0"
-
-[[projects]]
   name = "github.com/xtaci/smux"
   packages = ["."]
   revision = "e28719eede1ac5714cf0b06ba2f403125864ebe0"
@@ -138,7 +126,7 @@
     "twofish",
     "xtea"
   ]
-  revision = "614d502a4dac94afa3a6ce146bd1736da82514c6"
+  revision = "0709b304e793a5edb4a2c0145f281ecdc20838a4"
 
 [[projects]]
   branch = "master"
@@ -150,13 +138,13 @@
     "ipv4",
     "ipv6"
   ]
-  revision = "faa378e6dbaed88bd8100f8bcf09939375c6e8fa"
+  revision = "161cd47e91fd58ac17490ef4d742dc98bb4cf60e"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/sys"
   packages = ["cpu"]
-  revision = "fa5fdf94c78965f1aa8423f0cc50b8b8d728b05a"
+  revision = "d0be0721c37eeb5299f245a996a483160fc36940"
 
 [[projects]]
   name = "gopkg.in/yaml.v2"
@@ -167,6 +155,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "33f2790b566db6b9190892537af8318a10cfca0638f0e1112978b4d199a38a9d"
+  inputs-digest = "193ec4c810a4b234c7bdc4039e0b9dda21ca87a188f39bbd4a59d5d843eb593e"
   solver-name = "gps-cdcl"
   solver-version = 1

@@ -28,7 +28,6 @@ servers:
     kcptun:
       enable: true
       listen-port: 10011
-      crypt: "salsa20"
       mode: "fast"
       conn: 1
       autoexpire: 0
