@@ -5,7 +5,7 @@ ignore-ip:
   - "172.16.0.0/12"
   - "10.0.0.0/8"
 dns:
-  listen-addr: "192.168.0.1:53"
+  listen-addr: "10.0.0.52:53"
   dns-timeout: 60
   local-resolver:
     - "114.114.114.114"
@@ -17,14 +17,13 @@ shadowsocks:
   udp-timeout: 60
   pac-list:
     - "gfw-list.txt"
-    - "gfw-list.txt"
   servers:
-    - remote-server: "10.0.0.51:20000"
+    - remote-server: "65.49.196.94:20000"
       crypt: "AEAD_CHACHA20_POLY1305"
       Password: "123321A"
       kcptun:
         enable: true
-        server: "10.0.0.51:20010"
+        server: "65.49.196.94:20010"
         mode: "fast"
         thread: 4
         conn: 1

@@ -15,10 +15,6 @@
 ! or suggestion / enhancement at issue tracker:
 ! https://github.com/gfwlist/gfwlist/issues/.
 
-baidu.com
-10.10.1.103
-10.0.0.51
-
 !---------403/451/520 & URL Redirects---------
 ||2dbook.com
 ||4tern.com

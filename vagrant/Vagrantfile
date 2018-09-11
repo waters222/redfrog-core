@@ -17,13 +17,13 @@ sudo iptables --flush
 sudo iptables -t nat --flush
 sudo iptables --delete-chain
 
-sudo iptables -A INPUT -i enp0s3 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-sudo iptables -A FORWARD -i enp0s8 -o enp0s3 -j ACCEPT
-sudo iptables -A FORWARD -i enp0s3 -o enp0s8 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-sudo iptables -t nat -A POSTROUTING -o enp0s3 -j MASQUERADE
+sudo iptables -A FORWARD -o enp0s9 -j ACCEPT
+sudo iptables -A FORWARD -o enp0s9 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -t nat -A POSTROUTING -o enp0s9 -j MASQUERADE
 
-sudo iptables -A INPUT -i enp0s8 -j ACCEPT
+sudo iptables -A INPUT -i enp0s9 -j ACCEPT
 
 NAT_SCRIPT
 
@@ -155,6 +155,7 @@ Vagrant.configure("2") do |config|
     gateway.vm.box = "ubuntu/bionic64"
     gateway.vm.hostname = "gateway"
     gateway.vm.network "private_network", ip: "192.168.0.1" , virtualbox__intnet: "mynet"
+    gateway.vm.network "public_network", ip: "10.0.0.52"
     gateway.vm.network "forwarded_port", guest: 40000, host: 40000
     gateway.vm.provision "shell", inline: $nat_script
     gateway.vm.provision "shell", inline: $tproxy_script

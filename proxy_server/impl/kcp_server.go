@@ -40,7 +40,7 @@ func StartKCPServer(config config.KcptunConfig, crypt string, password string, t
 	}
 
 
-	if ret.listener, err = kcp.ListenWithOptionsAhead(fmt.Sprintf("0.0.0.0:%d", ret.config.ListenPort), ret.cipher, ret.config.Datashard, ret.config.Parityshard); err != nil{
+	if ret.listener, err = kcp.ListenWithOptionsAhead(fmt.Sprintf("0.0.0.0:%d", ret.config.ListenPort), config.ThreadCount, ret.cipher, ret.config.Datashard, ret.config.Parityshard); err != nil{
 		err = errors.Wrap(err, "Kcp Listen failed")
 		return
 	}

@@ -170,11 +170,11 @@ func (c* RoutingMgr)clearIPTables(iptbl *iptables.IPTables){
 		logger.Error("Flush chain failed", zap.String("table", TABLE_MANGLE), zap.String("chain", CHAIN_PREROUTING), zap.String("error", err.Error()))
 	}
 
-	if err := iptbl.DeleteChain(TABLE_MANGLE, CHAIN_RED_FROG); err != nil{
-		logger.Error("Delete chain failed", zap.String("chain", CHAIN_RED_FROG ), zap.String("error", err.Error()))
+	if err := iptbl.FlushChain(TABLE_MANGLE, CHAIN_RED_FROG); err != nil{
+		logger.Error("Flush chain failed", zap.String("chain", CHAIN_RED_FROG ), zap.String("error", err.Error()))
 	}
-	if err := iptbl.DeleteChain(TABLE_MANGLE, CHAIN_TPROXY); err != nil{
-		logger.Error("Delete chain failed", zap.String("chain", CHAIN_TPROXY ), zap.String("error", err.Error()))
+	if err := iptbl.FlushChain(TABLE_MANGLE, CHAIN_TPROXY); err != nil{
+		logger.Error("Flush chain failed", zap.String("chain", CHAIN_TPROXY ), zap.String("error", err.Error()))
 	}
 }
 

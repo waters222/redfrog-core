@@ -33,6 +33,7 @@ type KcptunConfig struct {
 	ScavengeTTL     int			`yaml:"scavenge-ttl"`
 
 	ListenPort		int			`yaml:"listen-port"`
+	ThreadCount		int			`yaml:"thread"`
 }
 
 func (c * KcptunConfig)UnmarshalYAML(unmarshal func(interface{}) error) error {

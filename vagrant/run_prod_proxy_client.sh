@@ -1,0 +1,2 @@
+#!/bin/bash
+vagrant ssh gateway -c 'cd /home/vagrant/map/src/github.com/weishi258/redfrog-coresudo /home/vagrant/map/src/github.com/weishi258/redfrog-core/bin/redfrog-client -c /home/vagrant/map/src/github.com/weishi258/redfrog-core/prod-config.yaml'
