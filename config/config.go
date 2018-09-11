@@ -45,8 +45,8 @@ func (c * KcptunConfig)UnmarshalYAML(unmarshal func(interface{}) error) error {
 		Mtu: 1350,
 		Sndwnd: 128,
 		Rcvwnd: 512,
-		Datashard: 10,
-		Parityshard: 3,
+		Datashard: -1,
+		Parityshard: -1,
 		Dscp: 0,
 		Nocomp: false,
 		Sockbuf: 4194304,
@@ -100,6 +100,7 @@ type DnsConfig struct {
 	ProxyResolver		[]string	`yaml:"proxy-resolver"`
 	DnsTimeout			int			`yaml:"dns-timeout"`
 
+
 }
 func (c * DnsConfig)UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type rawConfig DnsConfig
@@ -119,6 +120,7 @@ type Config struct {
 	Shadowsocks 	ShadowsocksConfig 	`yaml:"shadowsocks"`
 	PacketMask 		string				`yaml:"packet-mask"`
 	ListenPort 		int            		`yaml:"listen-port"`
+	IgnoreIP		[]string			`yaml:"ignore-ip"`
 }
 func (c * Config)UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type rawConfig Config

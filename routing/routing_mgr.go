@@ -2,7 +2,7 @@ package routing
 
 import (
 	"fmt"
-	"github.com/coreos/go-iptables/iptables"
+	"github.com/weishi258/go-iptables/iptables"
 	"github.com/pkg/errors"
 	"github.com/weishi258/redfrog-core/common"
 	"github.com/weishi258/redfrog-core/log"
@@ -39,12 +39,25 @@ type RoutingMgr struct{
 
 	ip4tbl 			*iptables.IPTables
 	ip6tbl 			*iptables.IPTables
+
+
+	ignoreIPNet		[]*net.IPNet
 }
 
 
-func StartRoutingMgr(port int, mark string) (ret *RoutingMgr, err error){
+func StartRoutingMgr(port int, mark string, ignoreIP []string) (ret *RoutingMgr, err error){
 	logger := log.GetLogger()
 	ret = &RoutingMgr{}
+	if ignoreIP != nil{
+		ret.ignoreIPNet = make([]*net.IPNet, 0)
+		for _, ipStr := range ignoreIP{
+			if _, ipnet, err := net.ParseCIDR(ipStr); err == nil{
+				ret.ignoreIPNet = append(ret.ignoreIPNet, ipnet)
+			}else{
+				logger.Warn("IgnoreIP format is invalid", zap.String("error", err.Error()))
+			}
+		}
+	}
 	ret.ipListV4 = make(map[string][]net.IP)
 	ret.ipListV6 = make(map[string][]net.IP)
 
@@ -116,13 +129,34 @@ func (c *RoutingMgr) initPreRoutingChain(isIPv6 bool) (err error) {
 		handler = c.ip6tbl
 	}
 
-	if ee := handler.Delete(TABLE_MANGLE, CHAIN_PREROUTING,   "-j", CHAIN_RED_FROG); ee != nil{
-		log.GetLogger().Warn("Delete into PREROUTING chain failed", zap.String("error", ee.Error()))
+	if err = handler.FlushChain(TABLE_MANGLE, CHAIN_PREROUTING); err != nil{
+		err = errors.Wrapf(err, "Flush chain %s -> %s failed", TABLE_MANGLE, CHAIN_PREROUTING)
+		return
 	}
 
+	for _, ipNet := range c.ignoreIPNet{
+		if isIPv6 {
+			if ipNet.IP.To4() == nil{
+				if err = handler.Append(TABLE_MANGLE, CHAIN_PREROUTING,  "-d", ipNet.String(), "-j", "RETURN"); err != nil{
+					err = errors.Wrap(err, "Append into PREROUTING chain failed")
+					return
+				}
+			}
+		}else{
+			if ipNet.IP.To4() != nil{
+				if err = handler.Append(TABLE_MANGLE, CHAIN_PREROUTING,  "-d", ipNet.String(), "-j", "RETURN"); err != nil{
+					err = errors.Wrap(err, "Append into PREROUTING chain failed")
+					return
+				}
+			}
+		}
+
+
+	}
 
 	if err = handler.Append(TABLE_MANGLE, CHAIN_PREROUTING,  "-j", CHAIN_RED_FROG); err != nil{
 		err = errors.Wrap(err, "Append into PREROUTING chain failed")
+		return
 	}
 
 	return
@@ -131,11 +165,9 @@ func (c *RoutingMgr) initPreRoutingChain(isIPv6 bool) (err error) {
 func (c* RoutingMgr)clearIPTables(iptbl *iptables.IPTables){
 	logger := log.GetLogger()
 	logger.Info("Stop routing manager")
-	if err := iptbl.Delete(TABLE_MANGLE, CHAIN_PREROUTING, "-p", "tcp","-j", CHAIN_RED_FROG); err != nil{
-		logger.Error("Delete rule from PREROUTING failed", zap.String("error", err.Error()))
-	}
-	if err := iptbl.Delete(TABLE_MANGLE, CHAIN_PREROUTING, "-p", "udp","-j", CHAIN_RED_FROG); err != nil{
-		logger.Error("Delete rule from PREROUTING failed", zap.String("error", err.Error()))
+
+	if err := iptbl.FlushChain(TABLE_MANGLE, CHAIN_PREROUTING); err != nil{
+		logger.Error("Flush chain failed", zap.String("table", TABLE_MANGLE), zap.String("chain", CHAIN_PREROUTING), zap.String("error", err.Error()))
 	}
 
 	if err := iptbl.DeleteChain(TABLE_MANGLE, CHAIN_RED_FROG); err != nil{

@@ -14,8 +14,8 @@ servers:
       mtu: 1350
       sndwnd: 128
       rcvwnd: 512
-      datashard: 10
-      parityshard: 3
+      datashard: -1
+      parityshard: -1
       dscp: 0
       nocomp: false
       keep-alive: 10
@@ -34,8 +34,8 @@ servers:
       mtu: 1350
       sndwnd: 128
       rcvwnd: 512
-      datashard: 10
-      parityshard: 3
+      datashard: -1
+      parityshard: -1
       dscp: 0
       nocomp: false
       keep-alive: 10

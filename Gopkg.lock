@@ -11,12 +11,6 @@
   revision = "8b13a72661dae6e9e5dea04f344f0dc95ea29547"
 
 [[projects]]
-  name = "github.com/coreos/go-iptables"
-  packages = ["iptables"]
-  revision = "47f22b0dd3355c0ba570ba12b0b8a36bf214c04b"
-  version = "v0.4.0"
-
-[[projects]]
   branch = "master"
   name = "github.com/golang/snappy"
   packages = ["."]
@@ -76,6 +70,18 @@
   version = "v1.1"
 
 [[projects]]
+  name = "github.com/weishi258/go-iptables"
+  packages = ["iptables"]
+  revision = "47f22b0dd3355c0ba570ba12b0b8a36bf214c04b"
+  version = "v0.4.0"
+
+[[projects]]
+  name = "github.com/weishi258/kcp-go"
+  packages = ["."]
+  revision = "60be01eef6f665151bfbcde38429ee1d8710f68f"
+  version = "v4.0"
+
+[[projects]]
   name = "github.com/xtaci/smux"
   packages = ["."]
   revision = "e28719eede1ac5714cf0b06ba2f403125864ebe0"
@@ -126,7 +132,7 @@
     "twofish",
     "xtea"
   ]
-  revision = "0709b304e793a5edb4a2c0145f281ecdc20838a4"
+  revision = "0e37d006457bf46f9e6692014ba72ef82c33022c"
 
 [[projects]]
   branch = "master"
@@ -155,6 +161,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "193ec4c810a4b234c7bdc4039e0b9dda21ca87a188f39bbd4a59d5d843eb593e"
+  inputs-digest = "8654fbc384866a8dd7864a0f295de97b507dc395015f8ee1059b85065c95c34c"
   solver-name = "gps-cdcl"
   solver-version = 1

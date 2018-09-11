@@ -92,7 +92,7 @@ func main(){
 
 	// init routing mgr
 	var routingMgr *routing.RoutingMgr
-	if routingMgr, err = routing.StartRoutingMgr(config.ListenPort, config.PacketMask); err != nil{
+	if routingMgr, err = routing.StartRoutingMgr(config.ListenPort, config.PacketMask, config.IgnoreIP); err != nil{
 		logger.Error("Init routing manager failed", zap.String("error", err.Error()))
 		return
 	}

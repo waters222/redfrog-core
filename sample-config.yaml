@@ -1,5 +1,9 @@
 packet-mask: "0x1/0x1"
 listen-port: 9090
+ignore-ip:
+  - "192.168.0.0/16"
+  - "172.16.0.0/12"
+  - "10.0.0.0/8"
 dns:
   listen-addr: "192.168.0.1:53"
   dns-timeout: 60
@@ -27,8 +31,8 @@ shadowsocks:
         mtu: 1350
         sndwnd: 128
         rcvwnd: 512
-        datashard: 10
-        parityshard: 3
+        datashard: -1
+        parityshard: -1
         dscp: 0
         nocomp: false
         keep-alive: 10
