@@ -15,8 +15,6 @@
 $nat_script = <<-NAT_SCRIPT
 sudo sysctl -w net.ipv4.ip_forward=1
 
-export INTERFACE_IN=eno1
-export INTERFACE_OUT=eno1
 sudo iptables --flush
 sudo iptables -t nat --flush
 sudo iptables --delete-chain
@@ -28,6 +26,9 @@ sudo iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 sudo iptables -t nat -A POSTROUTING  -j MASQUERADE
 
 sudo iptables -A INPUT -j ACCEPT
+
+sudo ip rule add fwmark 0x1/0x1 lookup 100
+sudo ip route add local 0.0.0.0/0 dev lo table 100
 
 NAT_SCRIPT
 
@@ -45,8 +46,7 @@ sudo iptables -t mangle -N RED_FROG
 
 sudo iptables -t mangle -A PREROUTING -j RED_FROG
 
-sudo ip rule add fwmark 0x1/0x1 lookup 100
-sudo ip route add local 0.0.0.0/0 dev lo table 100
+
 
 
 

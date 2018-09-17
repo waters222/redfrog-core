@@ -6,7 +6,7 @@ ignore-ip:
   - "10.0.0.0/8"
 dns:
   listen-addr: "192.168.0.1:53"
-  dns-timeout: 10
+  dns-timeout: 30
   local-resolver:
     - "114.114.114.114"
   proxy-resolver:
@@ -14,7 +14,7 @@ dns:
     - "8.8.4.4"
 shadowsocks:
   tcp-timeout: 120
-  udp-timeout: 10
+  udp-timeout: 30
   pac-list:
     - "gfw-list.txt"
   servers:
@@ -26,7 +26,7 @@ shadowsocks:
         server: "146.71.79.80:20010"
         mode: "fast"
         thread: 4
-        conn: 1
+        conn: 4
         autoexpire: 0
         mtu: 1350
         sndwnd: 128
