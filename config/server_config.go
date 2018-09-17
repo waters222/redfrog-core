@@ -12,12 +12,12 @@ type ServerSwarmConfig struct {
 }
 
 type ServerConfig struct {
-	ListenPort			int 	`yaml:"listen-port"`
-	UdpTimeout			int 	`yaml:"udp-timeout"`
-	TcpTimeout			int 	`yaml:"tcp-timeout"`
-	Crypt				string 	`yaml:"crypt"`
-	Password			string 	`yaml:"password"`
-	Kcptun			KcptunConfig	`yaml:"kcptun"`
+	ListenAddr string          `yaml:"listen-addr"`
+	UdpTimeout int          `yaml:"udp-timeout"`
+	TcpTimeout int          `yaml:"tcp-timeout"`
+	Crypt      string       `yaml:"crypt"`
+	Password   string       `yaml:"password"`
+	Kcptun     KcptunConfig `yaml:"kcptun"`
 }
 func (c * ServerConfig)UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type rawConfig ServerConfig

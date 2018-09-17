@@ -22,7 +22,7 @@ type ProxyServer struct {
 	tcpTimeout_				time.Duration
 	udpTimeout_				time.Duration
 	cipher					core.Cipher
-	port					int
+	listenAddr					string
 	udpLeakyBuffer			*common.LeakyBuffer
 	udpNatMap_				*udpNatMap
 	kcpServer				*KCPServer
@@ -81,7 +81,7 @@ func StartProxyServer(config config.ServerConfig) (ret *ProxyServer, err error) 
 
 	ret.tcpTimeout_ = time.Second * time.Duration( config.TcpTimeout)
 	ret.udpTimeout_ = time.Second * time.Duration(config.UdpTimeout)
-	ret.port = config.ListenPort
+	ret.listenAddr = config.ListenAddr
 	ret.udpLeakyBuffer = common.NewLeakyBuffer(common.UDP_BUFFER_POOL_SIZE * 4, common.UDP_BUFFER_SIZE)
 
 	ret.udpNatMap_ = NewNatMap()
@@ -118,16 +118,16 @@ func (c *ProxyServer)Stop(){
 
 
 	if err := c.tcpListener_.Close(); err != nil{
-		logger.Error("ProxyServer stop tcp failed", zap.Int("port", c.port), zap.String("error", err.Error()))
+		logger.Error("ProxyServer stop tcp failed", zap.String("listenAddr", c.listenAddr), zap.String("error", err.Error()))
 	}
 	if err := c.udpListener_.Close(); err != nil{
-		logger.Error("ProxyServer stop udp failed", zap.Int("port", c.port), zap.String("error", err.Error()))
+		logger.Error("ProxyServer stop udp failed", zap.String("listenAddr", c.listenAddr), zap.String("error", err.Error()))
 	}
 
 	if c.kcpServer != nil{
 		c.kcpServer.Stop()
 	}
-	logger.Info("ProxyServer stopped", zap.Int("port", c.port))
+	logger.Info("ProxyServer stopped", zap.String("listenAddr", c.listenAddr))
 
 
 }
@@ -135,11 +135,11 @@ func (c *ProxyServer)Stop(){
 func (c *ProxyServer)startTcpListener() (err error){
 	logger := log.GetLogger()
 
-	if c.tcpListener_, err = net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d",c.port)); err != nil{
+	if c.tcpListener_, err = net.Listen("tcp4", c.listenAddr); err != nil{
 		err = errors.Wrap(err, "TCP listen failed")
 		return
 	}
-	logger.Info("TCP Listener started", zap.Int("port", c.port))
+	logger.Info("TCP Listener started", zap.String("listenAddr", c.listenAddr))
 	go c.startTCPAccept()
 	return
 }
@@ -155,7 +155,7 @@ func (c *ProxyServer)startTCPAccept(){
 			go c.handleTCP(conn)
 		}
 	}
-	logger.Info("TCP listen stopped", zap.Int("port", c.port))
+	logger.Info("TCP listen stopped", zap.String("listenAddr", c.listenAddr))
 }
 
 func (c *ProxyServer)handleTCP(conn net.Conn){
@@ -171,7 +171,7 @@ func (c *ProxyServer)handleTCP(conn net.Conn){
 		logger.Error("TCP read dst addr failed", zap.String("error", err.Error()))
 		return
 	}
-	remoteConn, err := net.Dial("tcp", dstAddr.String())
+	remoteConn, err := net.Dial("tcp4", dstAddr.String())
 	if err != nil{
 		logger.Info("TCP dial dst failed", zap.String("error", err.Error()))
 		return
@@ -214,13 +214,13 @@ func (c *ProxyServer)handleTCP(conn net.Conn){
 func (c *ProxyServer)startUDPListener() (err error){
 	logger := log.GetLogger()
 
-	if c.udpListener_, err = net.ListenPacket("udp", fmt.Sprintf("0.0.0.0:%d",c.port)); err != nil{
+	if c.udpListener_, err = net.ListenPacket("udp4", c.listenAddr); err != nil{
 		err = errors.Wrap(err, "UDP listen failed")
 		return
 	}
 	c.udpListener_ = c.cipher.PacketConn(c.udpListener_)
 
-	logger.Info("UDP Listener started", zap.Int("port", c.port))
+	logger.Info("UDP Listener started", zap.String("listenAddr", c.listenAddr))
 
 	go c.startUDPAccept()
 
@@ -233,14 +233,15 @@ func (c *ProxyServer)startUDPAccept(){
 		if dataLen, srcAddr, err := c.udpListener_.ReadFrom(buffer.Bytes()); err != nil{
 			c.udpLeakyBuffer.Put(buffer)
 			if ee, ok := err.(*net.OpError); ok && ee != nil && ee.Err.Error() != "use of closed network connection"{
-				logger.Debug("UDP Read failed", zap.String("error", err.Error()))
+				logger.Info("UDP Read failed", zap.String("error", err.Error()))
 			}
+
 		}else{
-			//logger.Debug("Read udp ", zap.String("srcAddr", srcAddr.String()))
+			logger.Debug("Read udp ", zap.String("srcAddr", srcAddr.String()))
 			go c.handleUDP(buffer, dataLen, srcAddr)
 		}
 	}
-	logger.Info("UDP listener stopped", zap.Int("port", c.port))
+	logger.Info("UDP listener stopped", zap.String("listenAddr", c.listenAddr))
 }
 
 func (c *ProxyServer) handleUDP(buffer *bytes.Buffer, dataLen int, srcAddr net.Addr) {
@@ -261,12 +262,13 @@ func (c *ProxyServer) handleUDP(buffer *bytes.Buffer, dataLen int, srcAddr net.A
 		return
 	}
 
+	logger.Debug("Handle UDP ", zap.String("src", srcAddr.String()), zap.String("dst", dstAddr.String()))
 	keyStr := fmt.Sprintf("%s->%s", srcAddr.String(), dstAddr.String())
 	//keyStr := srcAddr.String()
 	remoteConnEntry := c.udpNatMap_.Get(keyStr)
 
 	if remoteConnEntry == nil{
-		remoteConn, err := net.DialUDP("udp", nil, dstAddr)
+		remoteConn, err := net.ListenUDP("udp4",  nil)
 		if err != nil{
 			logger.Error("UDP open dial failed", zap.String("error", err.Error()))
 			return
@@ -276,10 +278,13 @@ func (c *ProxyServer) handleUDP(buffer *bytes.Buffer, dataLen int, srcAddr net.A
 	}
 
 	remoteConnEntry.conn.SetReadDeadline(time.Now().Add(c.udpTimeout_))
-	_, err = remoteConnEntry.conn.Write(buffer.Bytes()[len(dstAddrBytes):dataLen])
+	_, err = remoteConnEntry.conn.WriteTo(buffer.Bytes()[len(dstAddrBytes):dataLen], dstAddr)
 	if err != nil {
 		logger.Error("UDP write to remote failed", zap.String("error", err.Error()))
+	}else{
+		logger.Debug("UDP write to remote successful", zap.String("dst", dstAddr.String()))
 	}
+
 }
 
 func (c *ProxyServer)copyFromRemote(remoteConn *net.UDPConn, dstAddr *net.UDPAddr, srcAddr net.Addr, dstAddrBytes []byte){
@@ -319,9 +324,9 @@ func (c *ProxyServer)copyFromRemote(remoteConn *net.UDPConn, dstAddr *net.UDPAdd
 				logger.Error("UDP write back failed", zap.String("error", err.Error()))
 				return
 			}else{
-				logger.Debug("UDP write back to successful", zap.String("addr", srcAddr.String()))
 				c.udpLeakyBuffer.Put(writeBuffer)
 			}
 		}
+		logger.Debug("UDP write back to successful", zap.String("addr", srcAddr.String()))
 	}
 }

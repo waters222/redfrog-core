@@ -5,10 +5,10 @@ ignore-ip:
   - "172.16.0.0/12"
   - "10.0.0.0/8"
 dns:
-  listen-addr: "10.0.0.52:53"
+  listen-addr: "10.0.0.179:53"
   dns-timeout: 60
   local-resolver:
-    - "114.114.114.114"
+    - "10.0.0.1"
   proxy-resolver:
     - "8.8.8.8"
     - "8.8.4.4"
@@ -26,7 +26,7 @@ shadowsocks:
         server: "65.49.196.94:20010"
         mode: "fast"
         thread: 4
-        conn: 1
+        conn: 4
         autoexpire: 0
         mtu: 1350
         sndwnd: 128

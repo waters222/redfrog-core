@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	. "github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/log"
 	"github.com/weishi258/redfrog-core/proxy_server/impl"
@@ -56,8 +57,9 @@ func main(){
 	}()
 
 	// init logger
-	logger := log.InitLogger(logLevel, bProduction)
 
+	logger := log.InitLogger(logLevel, bProduction)
+	logger.Debug(fmt.Sprintf("Logger level is %s", logLevel))
 	// print version
 	if printVer{
 		logger.Info("RedFrog Server",

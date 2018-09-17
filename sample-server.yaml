@@ -1,13 +1,12 @@
 servers:
-  - listen-port: 20000
+  - listen-addr: "0.0.0.0:20000"
     tcp-timeout: 120
     udp-timeout: 30
     crypt: "AEAD_CHACHA20_POLY1305"
     Password: "123321A"
     kcptun:
       enable: true
-      listen-port: 20010
-      crypt: "salsa20"
+      listen-addr: "0.0.0.0:20010"
       mode: "fast"
       thread: 4
       conn: 1
@@ -21,14 +20,14 @@ servers:
       nocomp: false
       keep-alive: 10
       sock-buf : 4194304
-  - listen-port: 20001
+  - listen-addr: "0.0.0.0:20001"
     tcp-timeout: 120
     udp-timeout: 30
     crypt: "AEAD_CHACHA20_POLY1305"
     Password: "123321A"
     kcptun:
       enable: true
-      listen-port: 20011
+      listen-addr: "0.0.0.0:20011"
       mode: "fast"
       thread: 4
       conn: 1

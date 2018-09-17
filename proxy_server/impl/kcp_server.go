@@ -1,14 +1,13 @@
 package impl
 
 import (
-	"fmt"
 	"github.com/pkg/errors"
 	"github.com/shadowsocks/go-shadowsocks2/socks"
+	"github.com/weishi258/kcp-go"
 	"github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/kcp_helper"
 	"github.com/weishi258/redfrog-core/log"
 	"github.com/xtaci/smux"
-	"github.com/weishi258/kcp-go"
 	"go.uber.org/zap"
 	"io"
 	"net"
@@ -40,7 +39,7 @@ func StartKCPServer(config config.KcptunConfig, crypt string, password string, t
 	}
 
 
-	if ret.listener, err = kcp.ListenWithOptionsAhead(fmt.Sprintf("0.0.0.0:%d", ret.config.ListenPort), config.ThreadCount, ret.cipher, ret.config.Datashard, ret.config.Parityshard); err != nil{
+	if ret.listener, err = kcp.ListenWithOptionsAhead(ret.config.ListenAddr, config.ThreadCount, ret.cipher, ret.config.Datashard, ret.config.Parityshard); err != nil{
 		err = errors.Wrap(err, "Kcp Listen failed")
 		return
 	}
@@ -59,7 +58,7 @@ func StartKCPServer(config config.KcptunConfig, crypt string, password string, t
 	}
 
 	go ret.startAccept()
-	logger.Info("Kcp server started at port", zap.Int("addr", ret.config.ListenPort))
+	logger.Info("Kcp server started at addr", zap.String("addr", ret.config.ListenAddr))
 	return
 }
 

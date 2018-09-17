@@ -119,9 +119,11 @@ func (c *DnsServer)ServeDNS(w dns.ResponseWriter, r *dns.Msg){
 	}
 
 	isBlacked := false
+	var domainName string
 	for _, q := range r.Question{
 		if c.pacMgr.CheckDomain(q.Name){
 			isBlacked = true
+			domainName = q.Name
 			break
 		}
 	}
@@ -130,17 +132,17 @@ func (c *DnsServer)ServeDNS(w dns.ResponseWriter, r *dns.Msg){
 		resolver := c.getResolver(true)
 		data, err := r.Pack()
 		if err != nil{
-			logger.Error("Pack DNS query failed", zap.String("error", err.Error()))
+			logger.Error("Pack DNS query for proxy failed", zap.String("error", err.Error()))
 			return
 		}
 		responseBytes, err := c.proxyClient.ExchangeDNS(w.RemoteAddr().String(), resolver.addr, data, c.dnsTimeout)
 		if err != nil{
-			logger.Error("DNS remote resolve failed", zap.String("error", err.Error()))
+			logger.Error("DNS proxy resolve failed", zap.String("domain", domainName),zap.String("error", err.Error()))
 			return
 		}
 		resDns := new(dns.Msg)
 		if err = resDns.Unpack(responseBytes); err != nil{
-			logger.Error("DNS unpack failed", zap.String("error", err.Error()))
+			logger.Error("DNS unpack for proxy resolver failed", zap.String("error", err.Error()))
 			return
 		}
 
@@ -168,9 +170,9 @@ func (c *DnsServer)ServeDNS(w dns.ResponseWriter, r *dns.Msg){
 
 		resolver := c.getResolver(false)
 		if response, t, err := resolver.client.ExchangeContext(ctx, r, resolver.addr); err != nil{
-			logger.Debug("Can not exchange dns query for remote resolver", zap.String("addr", resolver.addr), zap.String("error", err.Error()))
+			logger.Debug("Can not exchange dns query for local resolver", zap.String("addr", resolver.addr), zap.String("error", err.Error()))
 		}else{
-			logger.Debug("Dns query for remote resolver successful", zap.String("addr", resolver.addr), zap.Duration("time", t))
+			logger.Debug("Dns query for local resolver successful", zap.String("addr", resolver.addr), zap.Duration("time", t))
 			w.WriteMsg(response)
 		}
 	}

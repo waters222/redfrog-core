@@ -8,6 +8,7 @@ import (
 	"github.com/weishi258/redfrog-core/log"
 	"github.com/weishi258/redfrog-core/network"
 	"go.uber.org/zap"
+	"math/rand"
 	"net"
 	"time"
 )
@@ -74,8 +75,8 @@ func (c *ProxyClient)getBackendProxy(isUDP bool) *proxyBackend{
 			if length == 1{
 				return c.backends_[0]
 			}else{
-				//return c.backends_[rand.Int31n(int32(length))]
-				return c.backends_[0]
+				return c.backends_[rand.Int31n(int32(length))]
+				//return c.backends_[0]
 			}
 		}else{
 			// need to fix this, need an global nat table
@@ -166,7 +167,7 @@ func (c * ProxyClient)ExchangeDNS(srcAddr string, dstAddr string, data []byte, d
 	if backendProxy := c.getBackendProxy(true); backendProxy == nil{
 		err = errors.New("Can not get backend proxy")
 	}else if response, err = backendProxy.RelayDNS(srcAddr, dstAddr, data, c.udpBuffer_, dnsTimeout); err != nil {
-		err = errors.Wrap(err, "Relay DNS query failed")
+		err = errors.Wrap(err, "Relay DNS query from proxy failed")
 	}
 	return
 }
