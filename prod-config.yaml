@@ -26,7 +26,7 @@ shadowsocks:
         server: "65.49.196.94:20010"
         mode: "fast"
         thread: 4
-        conn: 4
+        conn: 1
         autoexpire: 0
         mtu: 1350
         sndwnd: 128

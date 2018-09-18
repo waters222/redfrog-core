@@ -20,19 +20,10 @@ import (
 var Version string
 var BuildTime string
 
-var sigChan chan os.Signal
 
 func main(){
 
-	sigChan = make(chan os.Signal, 5)
-	done := make(chan bool)
 
-	signal.Notify(sigChan,
-		syscall.SIGHUP,
-		syscall.SIGKILL,
-		syscall.SIGQUIT,
-		syscall.SIGTERM,
-		syscall.SIGINT)
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -127,10 +118,18 @@ func main(){
 
 
 	logger.Info("RefFrog is up and running")
+
+	sigChan := make(chan os.Signal, 1)
+	done := make(chan bool)
+
+	signal.Notify(sigChan,
+		syscall.SIGTERM,
+		syscall.SIGINT)
+
 	go func() {
 		sig := <-sigChan
 
-		logger.Debug("RefFrog caught signal for exit",
+		logger.Info("RefFrog caught signal for exit",
 			zap.Any("signal", sig))
 		done <- true
 	}()

@@ -18,15 +18,15 @@ shadowsocks:
   pac-list:
     - "gfw-list.txt"
   servers:
-    - remote-server: "146.71.79.80:20000"
+    - remote-server: "149.28.13.248:20000"
       crypt: "AEAD_CHACHA20_POLY1305"
       Password: "123321A"
       kcptun:
         enable: true
-        server: "146.71.79.80:20010"
+        server: "149.28.13.248:20010"
         mode: "fast"
         thread: 4
-        conn: 4
+        conn: 1
         autoexpire: 0
         mtu: 1350
         sndwnd: 128

@@ -8,7 +8,6 @@ import (
 	"github.com/weishi258/redfrog-core/log"
 	"github.com/weishi258/redfrog-core/network"
 	"go.uber.org/zap"
-	"math/rand"
 	"net"
 	"time"
 )
@@ -75,8 +74,8 @@ func (c *ProxyClient)getBackendProxy(isUDP bool) *proxyBackend{
 			if length == 1{
 				return c.backends_[0]
 			}else{
-				return c.backends_[rand.Int31n(int32(length))]
-				//return c.backends_[0]
+				//return c.backends_[rand.Int31n(int32(length))]
+				return c.backends_[0]
 			}
 		}else{
 			// need to fix this, need an global nat table

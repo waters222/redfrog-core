@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	. "github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/log"
 	"github.com/weishi258/redfrog-core/proxy_server/impl"
@@ -17,19 +16,11 @@ import (
 var Version string
 var BuildTime string
 
-var sigChan chan os.Signal
+
 func main(){
 
 
-	sigChan = make(chan os.Signal, 5)
-	done := make(chan bool)
 
-	signal.Notify(sigChan,
-		syscall.SIGHUP,
-		syscall.SIGKILL,
-		syscall.SIGQUIT,
-		syscall.SIGTERM,
-		syscall.SIGINT)
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -59,7 +50,7 @@ func main(){
 	// init logger
 
 	logger := log.InitLogger(logLevel, bProduction)
-	logger.Debug(fmt.Sprintf("Logger level is %s", logLevel))
+
 	// print version
 	if printVer{
 		logger.Info("RedFrog Server",
@@ -105,10 +96,18 @@ func main(){
 	}()
 
 	logger.Info("RefFrog server is up and running")
+
+	sigChan := make(chan os.Signal, 1)
+	done := make(chan bool)
+
+	signal.Notify(sigChan,
+		syscall.SIGTERM,
+		syscall.SIGINT)
+
 	go func() {
 		sig := <-sigChan
 
-		logger.Debug("RefFrog server caught signal for exit",
+		logger.Info("RefFrog caught signal for exit",
 			zap.Any("signal", sig))
 		done <- true
 	}()
