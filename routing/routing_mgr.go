@@ -164,7 +164,6 @@ func (c *RoutingMgr) initPreRoutingChain(isIPv6 bool) (err error) {
 
 func (c* RoutingMgr)clearIPTables(iptbl *iptables.IPTables){
 	logger := log.GetLogger()
-	logger.Info("Stop routing manager")
 
 	if err := iptbl.FlushChain(TABLE_MANGLE, CHAIN_PREROUTING); err != nil{
 		logger.Error("Flush chain failed", zap.String("table", TABLE_MANGLE), zap.String("chain", CHAIN_PREROUTING), zap.String("error", err.Error()))
@@ -184,7 +183,7 @@ func (c *RoutingMgr) Stop(){
 
 	c.clearIPTables(c.ip4tbl)
 	c.clearIPTables(c.ip6tbl)
-	logger.Info("Stop routing manager")
+	logger.Info("Routing manager stopped")
 }
 
 func (c *RoutingMgr)serializeRoutingTable() (err error){

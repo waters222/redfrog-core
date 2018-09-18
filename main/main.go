@@ -3,12 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
-	. "github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/dns_proxy"
 	"github.com/weishi258/redfrog-core/log"
 	"github.com/weishi258/redfrog-core/pac"
 	"github.com/weishi258/redfrog-core/proxy_client"
 	"github.com/weishi258/redfrog-core/routing"
+	. "github.com/weishi258/redfrog-core/config"
 	"go.uber.org/zap"
 	"math/rand"
 	"os"
@@ -21,9 +21,13 @@ var Version string
 var BuildTime string
 
 
+
+var serviceStopSignal chan bool
+var appRunStatus chan bool
+var sigChan chan os.Signal
+
+
 func main(){
-
-
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -63,7 +67,7 @@ func main(){
 
 	defer func(){
 		logger.Sync()
-		logger.Info("RedFrog is stopped")
+		logger.Info("RedFrog is exit")
 		if err != nil{
 			os.Exit(1)
 		}else{
@@ -71,7 +75,35 @@ func main(){
 		}
 	}()
 
+
+	serviceStopSignal = make(chan bool)
+	appRunStatus = make(chan bool)
+	sigChan = make(chan os.Signal, 1)
+
+	signal.Notify(sigChan,
+		syscall.SIGTERM,
+		syscall.SIGINT)
+
+	go StartService(configFile)
+
+	runStatus := <- appRunStatus
+	if !runStatus{
+		os.Exit(1)
+	}
+	sig := <-sigChan
+	serviceStopSignal <- true
+	<-appRunStatus
+	logger.Info("RefFrog caught signal for exit", zap.Any("signal", sig))
+
+}
+func StartService(configFile string){
+	logger := log.GetLogger()
+	status := false
+	defer func(){
+		appRunStatus <- status
+	}()
 	// parse config
+	var err error
 	var config Config
 	if config, err = ParseClientConfig(configFile); err != nil{
 		logger.Error("Read config file failed", zap.String("file", configFile), zap.String("error", err.Error()))
@@ -114,25 +146,12 @@ func main(){
 		return
 	}
 	defer dnsServer.Stop()
+	status = true
 
+	logger.Info("RefFrog service is up and running")
 
+	appRunStatus <- true
+	<- serviceStopSignal
 
-	logger.Info("RefFrog is up and running")
-
-	sigChan := make(chan os.Signal, 1)
-	done := make(chan bool)
-
-	signal.Notify(sigChan,
-		syscall.SIGTERM,
-		syscall.SIGINT)
-
-	go func() {
-		sig := <-sigChan
-
-		logger.Info("RefFrog caught signal for exit",
-			zap.Any("signal", sig))
-		done <- true
-	}()
-	<-done
-
+	logger.Info("RedFrog service is stopped")
 }

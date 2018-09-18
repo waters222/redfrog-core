@@ -3,6 +3,7 @@ listen-port: 9090
 ignore-ip:
   - "192.168.0.0/16"
   - "172.16.0.0/12"
+  - "10.0.0.0/8"
 dns:
   listen-addr: "192.168.0.1:53"
   dns-timeout: 30

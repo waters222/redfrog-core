@@ -27,7 +27,6 @@ type proxyBackend struct{
 	//dnsNatMap_	 	*dnsNatMap
 	kcpBackend		*KCPBackend
 
-	proxyClient		*ProxyClient
 }
 
 
@@ -67,10 +66,9 @@ func computeUDPKey(src *net.UDPAddr, dst *net.UDPAddr) string{
 }
 
 
-func CreateProxyBackend(proxyClient *ProxyClient, config config.RemoteServerConfig, tcpTimeout int, udpTimeout int) (ret *proxyBackend, err error){
+func CreateProxyBackend(config config.RemoteServerConfig, tcpTimeout int, udpTimeout int) (ret *proxyBackend, err error){
 
 	ret = &proxyBackend{}
-	ret.proxyClient = proxyClient
 	ret.tcpTimeout_ = time.Second * time.Duration(tcpTimeout)
 	ret.udpTimeout_ = time.Second * time.Duration(udpTimeout)
 
@@ -98,10 +96,6 @@ func CreateProxyBackend(proxyClient *ProxyClient, config config.RemoteServerConf
 		return
 	}
 
-	//ret.udpNatMap_ = &udpNatMap{entries: make(map[string]*udpProxyEntry)}
-	//ret.dnsNatMap_ = &dnsNatMap{entries: make(map[string]net.PacketConn)}
-	//ret.udpOrigDstMap_ = &udpOrigDstMap{channels: make(map[string]chan dstMapChannel)}
-
 	if config.Kcptun.Enable{
 		if ret.kcpBackend, err = StartKCPBackend(config.Kcptun, config.Crypt, config.Password); err != nil{
 			err = errors.Wrap(err, "Create KCP backend failed")
@@ -114,13 +108,11 @@ func CreateProxyBackend(proxyClient *ProxyClient, config config.RemoteServerConf
 func (c *proxyBackend)Stop(){
 	logger := log.GetLogger()
 
-	c.proxyClient = nil
-
 
 	if c.kcpBackend != nil{
 		c.kcpBackend.Stop()
 	}
-	logger.Info("Proxy backend stopped")
+	logger.Info("Proxy backend stopped", zap.String("addr", c.tcpAddr.String()))
 }
 
 func (c *proxyBackend) createTCPConn() (conn net.Conn, err error){

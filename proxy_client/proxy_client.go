@@ -159,7 +159,8 @@ func StartProxyClient(config config.ShadowsocksConfig, listenAddr string) (*Prox
 	ret.addr = listenAddr
 	ret.backends_ = make([]*proxyBackend, 0)
 	for _, backendConfig := range config.Servers{
-		if backend, err := CreateProxyBackend(ret, backendConfig, config.TcpTimeout, config.UdpTimeout); err != nil{
+		if backend, err := CreateProxyBackend(backendConfig, config.TcpTimeout, config.UdpTimeout); err != nil{
+			logger.Error("Proxy backend create failed", zap.String("addr", backendConfig.RemoteServer))
 			err = errors.Wrap(err, "Create proxy backend failed")
 			return nil, err
 		}else{

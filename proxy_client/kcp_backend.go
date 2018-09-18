@@ -96,7 +96,7 @@ func (c *KCPBackend) Stop(){
 		}
 
 	}
-	logger.Info("KCP client closed")
+	logger.Info("KCP backend stopped", zap.String("addr", c.config.Server))
 
 }
 
