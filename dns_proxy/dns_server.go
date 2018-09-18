@@ -11,7 +11,9 @@ import (
 	"github.com/weishi258/redfrog-core/proxy_client"
 	"github.com/weishi258/redfrog-core/routing"
 	"go.uber.org/zap"
+	"math/rand"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -34,6 +36,8 @@ type DnsServer struct {
 
 	proxyClient 	*proxy_client.ProxyClient
 	dnsTimeout		time.Duration
+
+	dnsResolverMux 		sync.RWMutex
 }
 
 
@@ -96,10 +100,22 @@ func (c *DnsServer) Stop(){
 }
 
 func (c *DnsServer)getResolver(bIsRemote bool) *dnsResolver{
+	c.dnsResolverMux.RLock()
+	defer c.dnsResolverMux.RUnlock()
 	if bIsRemote{
-		return c.remoteResolver[0]
+		length := len(c.remoteResolver)
+		if length == 1{
+			return c.remoteResolver[0]
+		}else{
+			return c.remoteResolver[rand.Int31n(int32(length))]
+		}
 	}else{
-		return c.localResolver[0]
+		length := len(c.localResolver)
+		if length == 1{
+			return c.localResolver[0]
+		}else{
+			return c.localResolver[rand.Int31n(int32(length))]
+		}
 	}
 }
 
