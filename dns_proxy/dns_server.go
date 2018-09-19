@@ -38,7 +38,47 @@ type DnsServer struct {
 	dnsTimeout		time.Duration
 
 	dnsResolverMux 		sync.RWMutex
+
+	dnsCaches			*dnsCache
 }
+
+type dnsCacheEntry struct {
+	response	[]byte
+	ttl			time.Time
+}
+
+type dnsCache struct {
+	sync.Mutex
+	caches			map[string]*dnsCacheEntry
+	timeout			time.Duration
+}
+
+func (c *dnsCache) Add(domain string, response []byte){
+	c.Lock()
+	defer c.Unlock()
+	c.caches[domain] = &dnsCacheEntry{response, time.Now().Add(c.timeout)}
+}
+
+func (c *dnsCache) Del(domain string){
+	c.Lock()
+	defer c.Unlock()
+	delete(c.caches, domain)
+}
+
+func (c *dnsCache) Get(domain string) []byte{
+	c.Lock()
+	defer c.Unlock()
+	if res, ok := c.caches[domain]; ok{
+		if time.Now().Before(res.ttl){
+			return res.response
+		}else{
+			delete(c.caches, domain)
+		}
+	}
+	return nil
+}
+
+
 
 
 func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingMgr *routing.RoutingMgr, proxyClient *proxy_client.ProxyClient) (ret *DnsServer, err error){
@@ -86,6 +126,10 @@ func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingM
 		}
 	}
 
+	if dnsConfig.Cache.Enable{
+		ret.dnsCaches = &dnsCache{caches: make(map[string]*dnsCacheEntry), timeout: time.Duration(dnsConfig.Cache.Timeout) * time.Second}
+	}
+
 	return
 }
 
@@ -123,6 +167,27 @@ func (c *DnsServer) applyFilterChain(r *dns.Msg) *dns.Msg{
 	// TODO
 	// 1. Implement DNS cache filter for fast performance
 	// 2. Implement DNS block filter for ads blocking etc
+
+
+	return nil
+}
+
+func (c *DnsServer) checkCache(r *dns.Msg) *dns.Msg{
+	if c.dnsCaches != nil{
+		for _, q := range r.Question{
+			if q.Qclass == dns.ClassINET{
+				if responseBytes := c.dnsCaches.Get(q.Name); responseBytes != nil{
+					resDns := new(dns.Msg)
+					if err := resDns.Unpack(responseBytes); err == nil{
+						resDns.Id = r.Id
+						log.GetLogger().Debug("DNS cache hit", zap.String("domain", q.Name))
+						return resDns
+					}
+
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -145,6 +210,11 @@ func (c *DnsServer)ServeDNS(w dns.ResponseWriter, r *dns.Msg){
 	}
 
 	if isBlacked {
+		if resDns:= c.checkCache(r); resDns != nil{
+			w.WriteMsg(resDns)
+			return
+		}
+
 		resolver := c.getResolver(true)
 		data, err := r.Pack()
 		if err != nil{
@@ -162,12 +232,15 @@ func (c *DnsServer)ServeDNS(w dns.ResponseWriter, r *dns.Msg){
 			return
 		}
 
+		shouldAddCache := false
 		for _, a := range resDns.Answer{
 			if a.Header().Class == dns.ClassINET{
 				if a.Header().Rrtype == dns.TypeA{
+					shouldAddCache = true
 					c.routingMgr.AddIp(a.Header().Name, a.(*dns.A).A)
 					logger.Debug("ipv4 ip query", zap.String("domain", a.Header().Name), zap.String("ip", a.(*dns.A).A.String()))
 				}else if a.Header().Rrtype == dns.TypeAAAA{
+					shouldAddCache = true
 					c.routingMgr.AddIp(a.Header().Name, a.(*dns.AAAA).AAAA)
 					logger.Debug("ipv6 ip query", zap.String("domain", a.Header().Name), zap.String("ip", a.(*dns.AAAA).AAAA.String()))
 				}else if a.Header().Rrtype == dns.TypeCNAME{
@@ -176,6 +249,9 @@ func (c *DnsServer)ServeDNS(w dns.ResponseWriter, r *dns.Msg){
 					logger.Debug("Add CNAME to list", zap.String("CNAME", cname))
 				}
 			}
+		}
+		if shouldAddCache && c.dnsCaches != nil{
+			c.dnsCaches.Add(domainName, responseBytes)
 		}
 
 		w.WriteMsg(resDns)

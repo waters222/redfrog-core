@@ -9,10 +9,11 @@ dns:
   dns-timeout: 30
   local-resolver:
     - "114.114.114.114"
-    - "10.0.0.1"
   proxy-resolver:
     - "8.8.8.8"
-    - "8.8.4.4"
+  cache:
+    enable: true
+    timeout: 30
 shadowsocks:
   tcp-timeout: 120
   udp-timeout: 30

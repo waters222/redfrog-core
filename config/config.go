@@ -97,14 +97,19 @@ func (c * ShadowsocksConfig)UnmarshalYAML(unmarshal func(interface{}) error) err
 	return nil
 }
 
+type DnsCacheConfig struct {
+	Enable 		bool		`yaml:"enable"`
+	Timeout		int			`yaml:"timeout"`
+}
+
 type DnsConfig struct {
 	ListenAddr			string 		`yaml:"listen-addr"`
 	LocalResolver		[]string	`yaml:"local-resolver"`
 	ProxyResolver		[]string	`yaml:"proxy-resolver"`
 	DnsTimeout			int			`yaml:"dns-timeout"`
-
-
+	Cache				DnsCacheConfig	`yaml:"cache"`
 }
+
 func (c * DnsConfig)UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type rawConfig DnsConfig
 	raw := rawConfig{

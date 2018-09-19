@@ -12,7 +12,9 @@ dns:
     - "10.0.0.1"
   proxy-resolver:
     - "8.8.8.8"
-    - "8.8.4.4"
+  cache:
+    enable: true
+    timeout: 30
 shadowsocks:
   tcp-timeout: 120
   udp-timeout: 30
@@ -20,12 +22,12 @@ shadowsocks:
     - "gfw-list.txt"
     - "custom-list.txt"
   servers:
-    - remote-server: "10.0.0.51:20000"
+    - remote-server: "65.49.196.94:20000"
       crypt: "AEAD_CHACHA20_POLY1305"
       Password: "123321A"
       kcptun:
-        enable: true
-        server: "10.0.0.51:20010"
+        enable: false
+        server: "65.49.196.94:20010"
         mode: "fast"
         thread: 4
         conn: 4
@@ -40,12 +42,12 @@ shadowsocks:
         keep-alive-interval: 10
         keep-alive-timeout: 120
         sock-buf : 4194304
-    - remote-server: "10.0.0.51:20001"
+    - remote-server: "149.28.13.248:20001"
       crypt: "AEAD_CHACHA20_POLY1305"
       Password: "123321A"
       kcptun:
-        enable: true
-        server: "10.0.0.51:20011"
+        enable: false
+        server: "149.28.13.248:20011"
         mode: "fast"
         thread: 4
         conn: 4
