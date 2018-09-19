@@ -8,18 +8,19 @@ import (
 )
 
 type ServerSwarmConfig struct {
-	Servers				[]ServerConfig	`yaml:"servers"`
+	Servers []ServerConfig `yaml:"servers"`
 }
 
 type ServerConfig struct {
-	ListenAddr string          `yaml:"listen-addr"`
+	ListenAddr string       `yaml:"listen-addr"`
 	UdpTimeout int          `yaml:"udp-timeout"`
 	TcpTimeout int          `yaml:"tcp-timeout"`
 	Crypt      string       `yaml:"crypt"`
 	Password   string       `yaml:"password"`
 	Kcptun     KcptunConfig `yaml:"kcptun"`
 }
-func (c * ServerConfig)UnmarshalYAML(unmarshal func(interface{}) error) error {
+
+func (c *ServerConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type rawConfig ServerConfig
 	raw := rawConfig{
 		TcpTimeout: 120,
@@ -33,10 +34,7 @@ func (c * ServerConfig)UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-
-
-
-func ParseServerConfig(path string) (ret ServerSwarmConfig, err error){
+func ParseServerConfig(path string) (ret ServerSwarmConfig, err error) {
 	file, err := os.Open(path) // For read access.
 	if err != nil {
 		err = errors.Wrapf(err, "Open config file %s failed", path)
@@ -51,7 +49,7 @@ func ParseServerConfig(path string) (ret ServerSwarmConfig, err error){
 	}
 
 	ret = ServerSwarmConfig{}
-	if err = yaml.Unmarshal(data, &ret); err != nil{
+	if err = yaml.Unmarshal(data, &ret); err != nil {
 		err = errors.Wrapf(err, "Parse config file %s failed", path)
 		return
 	}

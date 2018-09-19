@@ -23,13 +23,12 @@ import (
 
 var CONN_DEADLINE int
 
-
 var Version string
 var BuildTime string
 
 var sigChan chan os.Signal
 
-func main(){
+func main() {
 
 	sigChan = make(chan os.Signal, 5)
 	done := make(chan bool)
@@ -47,7 +46,7 @@ func main(){
 	var logLevel string
 	var mode string
 	var addr string
-	var msg 	string
+	var msg string
 	var repeatTime int
 	var bTransparent bool
 	var err error
@@ -66,11 +65,11 @@ func main(){
 
 	logger := log.InitLogger(logLevel, false)
 
-	defer func(){
-		if err != nil{
+	defer func() {
+		if err != nil {
 			logger.Error("Encounter critical error!", zap.String("error", err.Error()))
 			os.Exit(1)
-		}else{
+		} else {
 			os.Exit(0)
 		}
 	}()
@@ -82,22 +81,22 @@ func main(){
 
 	var ticker *time.Ticker
 	if mode == "client" {
-		if repeatTime > 0{
+		if repeatTime > 0 {
 			ticker = time.NewTicker(time.Second * time.Duration(repeatTime))
 			logger.Info("Running client repeat mode", zap.Int("seconds", repeatTime), zap.Int("timeout", CONN_DEADLINE))
-			go func(){
-				for  range ticker.C{
+			go func() {
+				for range ticker.C {
 					runClient(addr, msg)
 				}
 			}()
-		}else{
+		} else {
 			runClient(addr, msg)
 			return
 		}
 
-	}else if mode == "server"{
+	} else if mode == "server" {
 		logger.Info("Running as server mode", zap.String("addr", addr), zap.Int("timeout", CONN_DEADLINE))
-		if tcpListen, err = listenTcp(addr, bTransparent); err != nil{
+		if tcpListen, err = listenTcp(addr, bTransparent); err != nil {
 			logger.Error("Listen TCP failed", zap.String("error", err.Error()))
 			return
 		}
@@ -106,7 +105,7 @@ func main(){
 			tcpListen.Close()
 			logger.Info("TCP listen closed")
 		}()
-		if udpListen, err = listenUdp(addr, bTransparent); err != nil{
+		if udpListen, err = listenUdp(addr, bTransparent); err != nil {
 			logger.Error("Listen UDP failed", zap.String("error", err.Error()))
 			return
 		}
@@ -117,13 +116,10 @@ func main(){
 			logger.Info("TCP listen closed")
 		}()
 
-	}else{
+	} else {
 		err = errors.New(fmt.Sprintf("Unknow mode type: %s", mode))
 		return
 	}
-
-
-
 
 	logger.Info("RedFrog Test is started")
 	go func() {
@@ -133,52 +129,52 @@ func main(){
 			zap.Any("signal", sig))
 		done <- true
 
-		if ticker != nil{
+		if ticker != nil {
 			ticker.Stop()
 		}
 	}()
 	<-done
 }
-func runClient(addr string, msg string){
+func runClient(addr string, msg string) {
 	logger := log.GetLogger()
 	var err error
 	logger.Info("Running as client mode", zap.String("addr", addr))
-	if err = writeTcp(addr, msg); err != nil{
+	if err = writeTcp(addr, msg); err != nil {
 		logger.Error("TCP Client failed", zap.String("error", err.Error()))
 	}
-	if err = writeUdp(addr, msg); err != nil{
+	if err = writeUdp(addr, msg); err != nil {
 		logger.Error("UDP Client failed", zap.String("error", err.Error()))
 	}
 }
-func writeTcp(addr string, msg string) (err error){
+func writeTcp(addr string, msg string) (err error) {
 	logger := log.GetLogger()
 
 	var conn net.Conn
 	dial := net.Dialer{Timeout: time.Second * time.Duration(CONN_DEADLINE)}
-	if conn, err = dial.Dial("tcp", addr); err != nil{
+	if conn, err = dial.Dial("tcp", addr); err != nil {
 		return
 	}
 	defer conn.Close()
-	if err = conn.SetDeadline(time.Now().Add(time.Second * time.Duration(CONN_DEADLINE))); err != nil{
+	if err = conn.SetDeadline(time.Now().Add(time.Second * time.Duration(CONN_DEADLINE))); err != nil {
 		return
 	}
 
 	var n int
 	writeBuffer := []byte(msg)
-	if n, err = conn.Write(writeBuffer); err != nil{
+	if n, err = conn.Write(writeBuffer); err != nil {
 		return
 	}
-	if n < len(msg){
+	if n < len(msg) {
 		err = errors.New("Write tcp less")
 		return
 	}
 
 	lineBuffer := make([]byte, 4096)
 	var readLen int
-	if readLen, err = conn.Read(lineBuffer); err != nil{
+	if readLen, err = conn.Read(lineBuffer); err != nil {
 		return
 	}
-	if !checkEqual(lineBuffer, writeBuffer, readLen){
+	if !checkEqual(lineBuffer, writeBuffer, readLen) {
 		err = errors.New(fmt.Sprintf("TCP response is not equal: %s != %s", lineBuffer, writeBuffer))
 		return
 	}
@@ -186,41 +182,41 @@ func writeTcp(addr string, msg string) (err error){
 
 	return
 }
-func writeUdp(addr string, msg string) (err error){
+func writeUdp(addr string, msg string) (err error) {
 
 	logger := log.GetLogger()
 
 	var udpAddr *net.UDPAddr
-	if udpAddr, err = net.ResolveUDPAddr("udp", addr); err != nil{
+	if udpAddr, err = net.ResolveUDPAddr("udp", addr); err != nil {
 		return
 	}
 	var conn *net.UDPConn
-	if conn, err = net.DialUDP("udp", nil, udpAddr); err != nil{
+	if conn, err = net.DialUDP("udp", nil, udpAddr); err != nil {
 		return
 	}
 	defer conn.Close()
 	//
-	if err = conn.SetReadDeadline(time.Now().Add(time.Second * time.Duration(CONN_DEADLINE))); err != nil{
+	if err = conn.SetReadDeadline(time.Now().Add(time.Second * time.Duration(CONN_DEADLINE))); err != nil {
 		return
 	}
 
 	writeBuffer := []byte(msg)
 	var writeLen int
-	if writeLen, err = conn.Write(writeBuffer); err != nil{
+	if writeLen, err = conn.Write(writeBuffer); err != nil {
 		logger.Error("UDP write failed", zap.String("error", err.Error()))
 		return err
 	}
 
 	readBuffer := make([]byte, writeLen)
 	var readLen int
-	if n, remoteAddr, err := conn.ReadFromUDP(readBuffer); err != nil{
-		logger.Error("Get udp response from server failed",zap.String("err", err.Error()))
+	if n, remoteAddr, err := conn.ReadFromUDP(readBuffer); err != nil {
+		logger.Error("Get udp response from server failed", zap.String("err", err.Error()))
 		return err
-	}else{
-		logger.Info("Get udp response from server successful",zap.String("addr", remoteAddr.String()))
+	} else {
+		logger.Info("Get udp response from server successful", zap.String("addr", remoteAddr.String()))
 		readLen = n
 	}
-	if !checkEqual(readBuffer, writeBuffer, readLen){
+	if !checkEqual(readBuffer, writeBuffer, readLen) {
 		err = errors.New(fmt.Sprintf("UDP response is not equal: %s != %s", readBuffer, writeBuffer))
 		return
 	}
@@ -228,33 +224,31 @@ func writeUdp(addr string, msg string) (err error){
 	return
 }
 
-
-func listenTcp(addr string, bTransparent bool) (ln net.Listener, err error){
+func listenTcp(addr string, bTransparent bool) (ln net.Listener, err error) {
 	logger := log.GetLogger()
 
-	if bTransparent{
-		if ln, err = network.ListenTransparentTCP(addr, false); err != nil{
+	if bTransparent {
+		if ln, err = network.ListenTransparentTCP(addr, false); err != nil {
 			err = errors.Wrap(err, "Listen TCP failed")
 			return
 		}
-	}else{
-		if ln, err = net.Listen("tcp", addr); err != nil{
+	} else {
+		if ln, err = net.Listen("tcp", addr); err != nil {
 			return
 		}
 	}
 
-
-	go func(){
+	go func() {
 		logger.Info("Listen TCP successful", zap.String("addr", addr))
-		for{
-			if conn, err := ln.Accept(); err != nil{
-				if err.(*net.OpError).Err.Error() != "use of closed network connection"{
+		for {
+			if conn, err := ln.Accept(); err != nil {
+				if err.(*net.OpError).Err.Error() != "use of closed network connection" {
 					logger.Error("Accept tcp conn failed", zap.String("error", err.Error()))
-				}else{
+				} else {
 					return
 				}
 
-			}else{
+			} else {
 				go handleTcpConn(conn)
 			}
 
@@ -264,71 +258,70 @@ func listenTcp(addr string, bTransparent bool) (ln net.Listener, err error){
 	return
 }
 
-func handleTcpConn(conn net.Conn){
+func handleTcpConn(conn net.Conn) {
 	logger := log.GetLogger()
 	defer conn.Close()
 
-
-	if err := conn.SetDeadline(time.Now().Add(time.Second * time.Duration(CONN_DEADLINE))); err != nil{
+	if err := conn.SetDeadline(time.Now().Add(time.Second * time.Duration(CONN_DEADLINE))); err != nil {
 		logger.Error("Set tcp conn deadline failed", zap.String("error", err.Error()))
 		return
 	}
 	lineBuffer := make([]byte, 4096)
 	var readLen int
 	var err error
-	if readLen, err = conn.Read(lineBuffer); err != nil{
+	if readLen, err = conn.Read(lineBuffer); err != nil {
 		logger.Error("TCP read failed", zap.String("error", err.Error()))
 		return
 	}
 
-	if n, err := conn.Write(lineBuffer[:readLen]); err != nil{
+	if n, err := conn.Write(lineBuffer[:readLen]); err != nil {
 		logger.Error("Handle TCP failed", zap.String("remoteAddr", conn.RemoteAddr().String()), zap.String("localAddr", conn.(*net.TCPConn).LocalAddr().String()), zap.String("error", err.Error()))
-	}else if n < readLen{
+	} else if n < readLen {
 		logger.Error("Handle TCP failed, Write tcp less then expected", zap.String("remoteAddr", conn.RemoteAddr().String()), zap.String("localAddr", conn.(*net.TCPConn).LocalAddr().String()), zap.Int("n", n), zap.Int("expected", len(lineBuffer)))
-	}else{
+	} else {
 		logger.Info("Handle tcp successful", zap.String("remoteAddr", conn.RemoteAddr().String()), zap.String("localAddr", conn.(*net.TCPConn).LocalAddr().String()), zap.ByteString("msg", lineBuffer[:readLen]))
 	}
 }
 
-func listenUdp(addr string, bTransparent bool) (ln *net.UDPConn, err error){
+func listenUdp(addr string, bTransparent bool) (ln *net.UDPConn, err error) {
 	logger := log.GetLogger()
-	if bTransparent{
-		if ln, err = network.ListenTransparentUDP(addr, false); err != nil{
+	if bTransparent {
+		if ln, err = network.ListenTransparentUDP(addr, false); err != nil {
 			return
 		}
-	}else{
+	} else {
 		var addrTemp *net.UDPAddr
-		if addrTemp, err = net.ResolveUDPAddr("udp", addr); err != nil{
+		if addrTemp, err = net.ResolveUDPAddr("udp", addr); err != nil {
 			err = errors.Wrap(err, "Resolve UDP failed")
 			return
-		}else{
-			if ln, err = net.ListenUDP("udp", addrTemp); err != nil{
+		} else {
+			if ln, err = net.ListenUDP("udp", addrTemp); err != nil {
 				return
 			}
 		}
 
 	}
 
-	go func(){
+	go func() {
 		logger.Info("Listen UDP successful", zap.String("addr", addr))
-		for{
+		for {
 			udpBuffer := make([]byte, common.UDP_BUFFER_SIZE)
 			oob := make([]byte, common.UDP_OOB_BUFFER_SIZE)
-			if dataLen, oobLen, _, srcAddr, err := ln.ReadMsgUDP(udpBuffer, oob); err != nil{
-				if err.(*net.OpError).Err.Error() != "use of closed network connection"{
+			if dataLen, oobLen, _, srcAddr, err := ln.ReadMsgUDP(udpBuffer, oob); err != nil {
+				if err.(*net.OpError).Err.Error() != "use of closed network connection" {
 					logger.Error("Read from udp failed", zap.String("error", err.Error()))
-				}else{
+				} else {
 					return
 				}
 
-			}else{
-				if bTransparent{
-					if dstAddr, err := network.ExtractOrigDstFromUDP(oobLen, oob); err != nil{
+			} else {
+				if bTransparent {
+					if dstAddr, err := network.ExtractOrigDstFromUDP(oobLen, oob); err != nil {
 						logger.Error("Extract udp original dst failed", zap.String("error", err.Error()))
-					}else{
+					} else {
 						go handleUdpTransparent(srcAddr, dstAddr, udpBuffer[:dataLen])
 					}
-				}else{
+				} else {
 					go handleUDP(ln, srcAddr, udpBuffer[:dataLen])
 				}
 
@@ -338,41 +331,40 @@ func listenUdp(addr string, bTransparent bool) (ln *net.UDPConn, err error){
 	return
 }
 
-func handleUDP(ln *net.UDPConn, src *net.UDPAddr, data []byte){
+func handleUDP(ln *net.UDPConn, src *net.UDPAddr, data []byte) {
 	logger := log.GetLogger()
-	if _, err := ln.WriteTo(data, src); err != nil{
-		logger.Error("Handle UDP failed", zap.String("src", src.String()),  zap.String("error",err.Error()))
-	}else{
-		logger.Info("Handle UDP successful", zap.String("srcAddr", src.String()),  zap.ByteString("msg", data))
+	if _, err := ln.WriteTo(data, src); err != nil {
+		logger.Error("Handle UDP failed", zap.String("src", src.String()), zap.String("error", err.Error()))
+	} else {
+		logger.Info("Handle UDP successful", zap.String("srcAddr", src.String()), zap.ByteString("msg", data))
 	}
 }
-func handleUdpTransparent(src *net.UDPAddr, dst *net.UDPAddr, data []byte){
+func handleUdpTransparent(src *net.UDPAddr, dst *net.UDPAddr, data []byte) {
 	logger := log.GetLogger()
 	conn, err := network.DialTransparentUDP(dst)
-	if err != nil{
+	if err != nil {
 		logger.Error("Can not create udp conn", zap.String("error", err.Error()))
 		return
 	}
 	defer conn.Close()
 
-	if _, err = conn.WriteToUDP(data, src); err != nil{
-		logger.Error("Handle UDP failed", zap.String("src", src.String()), zap.String("dst", dst.String()), zap.String("error",err.Error()))
-	}else{
+	if _, err = conn.WriteToUDP(data, src); err != nil {
+		logger.Error("Handle UDP failed", zap.String("src", src.String()), zap.String("dst", dst.String()), zap.String("error", err.Error()))
+	} else {
 		logger.Info("Handle UDP successful", zap.String("srcAddr", src.String()), zap.String("dstAddr", dst.String()), zap.ByteString("msg", data))
 	}
 
 }
 
-
-func checkEqual(a []byte, b []byte, length int) bool{
+func checkEqual(a []byte, b []byte, length int) bool {
 	if (a == nil) != (b == nil) {
-		return false;
+		return false
 	}
-	if len(a) < length || len(b) < length{
+	if len(a) < length || len(b) < length {
 		return false
 	}
 
-	for i := 0; i < length; i++{
+	for i := 0; i < length; i++ {
 		if a[i] != b[i] {
 			return false
 		}

@@ -14,27 +14,25 @@ import (
 	"time"
 )
 
-type proxyBackend struct{
-	cipher_      core.Cipher
-	tcpAddr         net.TCPAddr
-	udpAddr			*net.UDPAddr
+type proxyBackend struct {
+	cipher_ core.Cipher
+	tcpAddr net.TCPAddr
+	udpAddr *net.UDPAddr
 
-	networkType_ 	string
-	tcpTimeout_  	time.Duration
-	udpTimeout_  	time.Duration
+	networkType_ string
+	tcpTimeout_  time.Duration
+	udpTimeout_  time.Duration
 	//udpNatMap_   	*udpNatMap
 	//udpOrigDstMap_	*udpOrigDstMap
 	//dnsNatMap_	 	*dnsNatMap
-	kcpBackend		*KCPBackend
-
+	kcpBackend *KCPBackend
 }
-
 
 const (
 	RELAY_TCP_RETRY = "Kcp relay tcp failed when write header"
 )
-// dns
 
+// dns
 
 //func (c *udpProxyEntry) copyFromRemote() error{
 //	logger := log.GetLogger()
@@ -59,45 +57,41 @@ const (
 //	}
 //}
 
-
-
-func computeUDPKey(src *net.UDPAddr, dst *net.UDPAddr) string{
+func computeUDPKey(src *net.UDPAddr, dst *net.UDPAddr) string {
 	return fmt.Sprintf("%s->%s", src.String(), dst.String())
 }
 
-
-func CreateProxyBackend(config config.RemoteServerConfig, tcpTimeout int, udpTimeout int) (ret *proxyBackend, err error){
+func CreateProxyBackend(config config.RemoteServerConfig, tcpTimeout int, udpTimeout int) (ret *proxyBackend, err error) {
 
 	ret = &proxyBackend{}
 	ret.tcpTimeout_ = time.Second * time.Duration(tcpTimeout)
 	ret.udpTimeout_ = time.Second * time.Duration(udpTimeout)
 
 	var isIPv6 bool
-	if isIPv6, err = network.CheckIPFamily(config.RemoteServer); err != nil{
+	if isIPv6, err = network.CheckIPFamily(config.RemoteServer); err != nil {
 		err = errors.Wrap(err, fmt.Sprintf("Invalid IP format: %s", config.RemoteServer))
 		return
 	}
 	if isIPv6 {
 		ret.networkType_ = "tcp6"
-	}else{
+	} else {
 		ret.networkType_ = "tcp4"
 	}
-	if ip, port, ee := network.ParseAddr(config.RemoteServer, isIPv6); ee != nil{
+	if ip, port, ee := network.ParseAddr(config.RemoteServer, isIPv6); ee != nil {
 		err = errors.Wrap(ee, "Parse IPv4 failed")
 		return
-	}else{
+	} else {
 		ret.tcpAddr = net.TCPAddr{IP: ip, Port: port}
 		ret.udpAddr = &net.UDPAddr{IP: ip, Port: port}
 	}
 
-
-	if ret.cipher_, err = core.PickCipher(config.Crypt, []byte{}, config.Password); err != nil{
+	if ret.cipher_, err = core.PickCipher(config.Crypt, []byte{}, config.Password); err != nil {
 		err = errors.Wrap(err, "Generate cipher failed")
 		return
 	}
 
-	if config.Kcptun.Enable{
-		if ret.kcpBackend, err = StartKCPBackend(config.Kcptun, config.Crypt, config.Password); err != nil{
+	if config.Kcptun.Enable {
+		if ret.kcpBackend, err = StartKCPBackend(config.Kcptun, config.Crypt, config.Password); err != nil {
 			err = errors.Wrap(err, "Create KCP backend failed")
 		}
 	}
@@ -105,20 +99,19 @@ func CreateProxyBackend(config config.RemoteServerConfig, tcpTimeout int, udpTim
 	return
 }
 
-func (c *proxyBackend)Stop(){
+func (c *proxyBackend) Stop() {
 	logger := log.GetLogger()
 
-
-	if c.kcpBackend != nil{
+	if c.kcpBackend != nil {
 		c.kcpBackend.Stop()
 	}
 	logger.Info("Proxy backend stopped", zap.String("addr", c.tcpAddr.String()))
 }
 
-func (c *proxyBackend) createTCPConn() (conn net.Conn, err error){
+func (c *proxyBackend) createTCPConn() (conn net.Conn, err error) {
 
 	conn, err = net.DialTCP(c.networkType_, nil, &c.tcpAddr)
-	if err != nil{
+	if err != nil {
 		return
 	}
 	conn.(*net.TCPConn).SetKeepAlive(true)
@@ -129,13 +122,13 @@ func (c *proxyBackend) createTCPConn() (conn net.Conn, err error){
 
 }
 
-func (c *proxyBackend)relayKCPData(srcConn net.Conn, kcpConn *smux.Stream, header []byte) (inboundSize int64, outboundSize int64, err error){
+func (c *proxyBackend) relayKCPData(srcConn net.Conn, kcpConn *smux.Stream, header []byte) (inboundSize int64, outboundSize int64, err error) {
 	defer kcpConn.Close()
 
 	srcConn.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
 	kcpConn.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
 
-	if _, err = kcpConn.Write(header); err != nil{
+	if _, err = kcpConn.Write(header); err != nil {
 		log.GetLogger().Error(RELAY_TCP_RETRY, zap.String("err", err.Error()))
 		err = errors.New(RELAY_TCP_RETRY)
 		return
@@ -143,7 +136,7 @@ func (c *proxyBackend)relayKCPData(srcConn net.Conn, kcpConn *smux.Stream, heade
 
 	ch := make(chan relayDataRes)
 
-	go func(){
+	go func() {
 		res := relayDataRes{}
 		res.outboundSize, res.Err = io.Copy(srcConn, kcpConn)
 		srcConn.SetDeadline(time.Now())
@@ -154,9 +147,9 @@ func (c *proxyBackend)relayKCPData(srcConn net.Conn, kcpConn *smux.Stream, heade
 	inboundSize, err = io.Copy(kcpConn, srcConn)
 	srcConn.SetDeadline(time.Now())
 	kcpConn.Close()
-	rs := <- ch
+	rs := <-ch
 
-	if err == nil{
+	if err == nil {
 		err = rs.Err
 	}
 
@@ -165,25 +158,25 @@ func (c *proxyBackend)relayKCPData(srcConn net.Conn, kcpConn *smux.Stream, heade
 	return
 }
 
-func (c *proxyBackend) RelayTCPData(src net.Conn) (inboundSize int64, outboundSize int64, err error){
+func (c *proxyBackend) RelayTCPData(src net.Conn) (inboundSize int64, outboundSize int64, err error) {
 
 	var originDst []byte
-	if originDst, err = network.ConvertShadowSocksAddr(src.LocalAddr().String()); err != nil{
+	if originDst, err = network.ConvertShadowSocksAddr(src.LocalAddr().String()); err != nil {
 		err = errors.Wrap(err, "Parse origin dst failed")
 		return
 	}
 
 	// try relay data through KCP is enabled and working
-	if c.kcpBackend != nil	{
+	if c.kcpBackend != nil {
 		// try to get an KCP steam connection, if not fall back to default proxy mode
 		var kcpConn *smux.Stream
-		if kcpConn, err = c.kcpBackend.GetKcpConn(); err == nil{
+		if kcpConn, err = c.kcpBackend.GetKcpConn(); err == nil {
 			if inboundSize, outboundSize, err = c.relayKCPData(src, kcpConn, originDst); err != nil {
-				if err.Error() != RELAY_TCP_RETRY{
+				if err.Error() != RELAY_TCP_RETRY {
 					log.GetLogger().Debug("Relay Kcp finished", zap.Int64("inbound", inboundSize), zap.Int64("outbound", outboundSize), zap.String("error", err.Error()))
 					return
 				}
-			}else{
+			} else {
 				log.GetLogger().Debug("Relay Kcp finished", zap.Int64("inbound", inboundSize), zap.Int64("outbound", outboundSize))
 				return
 			}
@@ -191,7 +184,7 @@ func (c *proxyBackend) RelayTCPData(src net.Conn) (inboundSize int64, outboundSi
 	}
 
 	var dst net.Conn
-	if dst, err = c.createTCPConn(); err != nil{
+	if dst, err = c.createTCPConn(); err != nil {
 		err = errors.Wrap(err, "Create remote conn failed")
 		return
 	}
@@ -201,7 +194,7 @@ func (c *proxyBackend) RelayTCPData(src net.Conn) (inboundSize int64, outboundSi
 	dst.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
 	src.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
 
-	if _, err = dst.Write(originDst); err != nil{
+	if _, err = dst.Write(originDst); err != nil {
 		err = errors.Wrap(err, "Write to remote server failed")
 		return
 	}
@@ -277,11 +270,10 @@ func (c *proxyBackend) RelayTCPData(src net.Conn) (inboundSize int64, outboundSi
 //	//dstChannel <- dstMapChannel{srcAddr, payload}
 //}*/
 
-
-func (c *proxyBackend) GetDNSRelayEntry() (entry *dnsNapMapEntry, err error){
+func (c *proxyBackend) GetDNSRelayEntry() (entry *dnsNapMapEntry, err error) {
 	var conn net.PacketConn
 	conn, err = net.ListenPacket("udp", "")
-	if err != nil{
+	if err != nil {
 		err = errors.Wrap(err, "UDP proxy listen local failed")
 		return
 	}
@@ -291,21 +283,18 @@ func (c *proxyBackend) GetDNSRelayEntry() (entry *dnsNapMapEntry, err error){
 
 }
 
-func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr)(entry *udpProxyEntry, err error){
+func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEntry, err error) {
 	var conn net.PacketConn
 	conn, err = net.ListenPacket("udp", "")
-	if err != nil{
+	if err != nil {
 		err = errors.Wrap(err, "UDP proxy listen local failed")
 		return
 	}
 	conn = c.cipher_.PacketConn(conn)
 
-	if entry, err = createUDPProxyEntry(conn,  dstAddr, c.udpAddr); err != nil{
+	if entry, err = createUDPProxyEntry(conn, dstAddr, c.udpAddr); err != nil {
 		conn.Close()
-		err = errors.Wrap(err,"Create udp proxy entry failed")
+		err = errors.Wrap(err, "Create udp proxy entry failed")
 	}
 	return
 }
-
-
-

@@ -1,16 +1,14 @@
 package config
 
 import (
-	"os"
-	"io/ioutil"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
-	)
-
-
+	"io/ioutil"
+	"os"
+)
 
 type KcptunConfig struct {
-	Enable      	bool   `yaml:"enable"`
+	Enable            bool   `yaml:"enable"`
 	Server            string `yaml:"server"`
 	Crypt             string `yaml:"crypt"`
 	Mode              string `yaml:"mode"`
@@ -34,10 +32,10 @@ type KcptunConfig struct {
 	ScavengeTTL       int    `yaml:"scavenge-ttl"`
 
 	ListenAddr  string `yaml:"listen-addr"`
-	ThreadCount int `yaml:"thread"`
+	ThreadCount int    `yaml:"thread"`
 }
 
-func (c * KcptunConfig)UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *KcptunConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type rawConfig KcptunConfig
 	raw := rawConfig{
 		Enable:            false,
@@ -60,7 +58,6 @@ func (c * KcptunConfig)UnmarshalYAML(unmarshal func(interface{}) error) error {
 		Resend:            0,
 		NoCongestion:      0,
 		ScavengeTTL:       600,
-
 	}
 	if err := unmarshal(&raw); err != nil {
 		return err
@@ -70,20 +67,21 @@ func (c * KcptunConfig)UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-type RemoteServerConfig struct{
-	RemoteServer	string 			`yaml:"remote-server"`
-	Crypt			string 			`yaml:"crypt"`
-	Password		string 			`yaml:"password"`
-	Kcptun			KcptunConfig	`yaml:"kcptun"`
+type RemoteServerConfig struct {
+	RemoteServer string       `yaml:"remote-server"`
+	Crypt        string       `yaml:"crypt"`
+	Password     string       `yaml:"password"`
+	Kcptun       KcptunConfig `yaml:"kcptun"`
 }
 
-type ShadowsocksConfig struct{
-	UdpTimeout 		int               `yaml:"udp-timeout"`
-	TcpTimeout 		int               `yaml:"tcp-timeout"`
-	PacList   		[]string             `yaml:"pac-list"`
-	Servers   		[]RemoteServerConfig `yaml:"servers"`
+type ShadowsocksConfig struct {
+	UdpTimeout int                  `yaml:"udp-timeout"`
+	TcpTimeout int                  `yaml:"tcp-timeout"`
+	PacList    []string             `yaml:"pac-list"`
+	Servers    []RemoteServerConfig `yaml:"servers"`
 }
-func (c * ShadowsocksConfig)UnmarshalYAML(unmarshal func(interface{}) error) error {
+
+func (c *ShadowsocksConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type rawConfig ShadowsocksConfig
 	raw := rawConfig{
 		TcpTimeout: 120,
@@ -98,20 +96,20 @@ func (c * ShadowsocksConfig)UnmarshalYAML(unmarshal func(interface{}) error) err
 }
 
 type DnsCacheConfig struct {
-	Enable 		bool		`yaml:"enable"`
-	Timeout		int			`yaml:"timeout"`
+	Enable  bool `yaml:"enable"`
+	Timeout int  `yaml:"timeout"`
 }
 
 type DnsConfig struct {
-	ListenAddr			string 		`yaml:"listen-addr"`
-	LocalResolver		[]string	`yaml:"local-resolver"`
-	ProxyResolver		[]string	`yaml:"proxy-resolver"`
-	DnsTimeout			int			`yaml:"dns-timeout"`
-	SendNum				int			`yaml:"send-num"`
-	Cache				DnsCacheConfig	`yaml:"cache"`
+	ListenAddr    string         `yaml:"listen-addr"`
+	LocalResolver []string       `yaml:"local-resolver"`
+	ProxyResolver []string       `yaml:"proxy-resolver"`
+	DnsTimeout    int            `yaml:"dns-timeout"`
+	SendNum       int            `yaml:"send-num"`
+	Cache         DnsCacheConfig `yaml:"cache"`
 }
 
-func (c * DnsConfig)UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (c *DnsConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type rawConfig DnsConfig
 	raw := rawConfig{
 		DnsTimeout: 120,
@@ -125,13 +123,16 @@ func (c * DnsConfig)UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 type Config struct {
-	Dns				DnsConfig			`yaml:"dns"`
-	Shadowsocks 	ShadowsocksConfig 	`yaml:"shadowsocks"`
-	PacketMask 		string				`yaml:"packet-mask"`
-	ListenPort 		int            		`yaml:"listen-port"`
-	IgnoreIP		[]string			`yaml:"ignore-ip"`
+	Dns            DnsConfig         `yaml:"dns"`
+	Shadowsocks    ShadowsocksConfig `yaml:"shadowsocks"`
+	PacketMask     string            `yaml:"packet-mask"`
+	ListenPort     int               `yaml:"listen-port"`
+	IgnoreIP       []string          `yaml:"ignore-ip"`
+	DefaultGateway string            `yaml:"default-gateway"`
+	IPAddr         string            `yaml:"ip-addr"`
 }
-func (c * Config)UnmarshalYAML(unmarshal func(interface{}) error) error {
+
+func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type rawConfig Config
 	raw := rawConfig{
 		PacketMask: "0x1/0x1",
@@ -144,9 +145,7 @@ func (c * Config)UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-
-
-func ParseClientConfig(path string) (ret Config, err error){
+func ParseClientConfig(path string) (ret Config, err error) {
 	file, err := os.Open(path) // For read access.
 	if err != nil {
 		err = errors.Wrapf(err, "Open config file %s failed", path)
@@ -161,7 +160,7 @@ func ParseClientConfig(path string) (ret Config, err error){
 	}
 
 	ret = Config{}
-	if err = yaml.Unmarshal(data, &ret); err != nil{
+	if err = yaml.Unmarshal(data, &ret); err != nil {
 		err = errors.Wrapf(err, "Parse config file %s failed", path)
 		return
 	}

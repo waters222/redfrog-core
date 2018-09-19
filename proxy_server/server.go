@@ -16,11 +16,7 @@ import (
 var Version string
 var BuildTime string
 
-
-func main(){
-
-
-
+func main() {
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -39,10 +35,10 @@ func main(){
 	flag.BoolVar(&bProduction, "production", false, "is production mode")
 	flag.Parse()
 
-	defer func(){
-		if err != nil{
+	defer func() {
+		if err != nil {
 			os.Exit(1)
-		}else{
+		} else {
 			os.Exit(0)
 		}
 	}()
@@ -52,45 +48,45 @@ func main(){
 	logger := log.InitLogger(logLevel, bProduction)
 
 	// print version
-	if printVer{
+	if printVer {
 		logger.Info("RedFrog Server",
 			zap.String("Version", Version),
 			zap.String("BuildTime", BuildTime))
 		os.Exit(0)
 	}
 
-	defer func(){
+	defer func() {
 		logger.Sync()
 		logger.Info("RedFrog is stopped")
-		if err != nil{
+		if err != nil {
 			os.Exit(1)
-		}else{
+		} else {
 			os.Exit(0)
 		}
 	}()
 
 	// parse config
 	var config ServerSwarmConfig
-	if config, err = ParseServerConfig(configFile); err != nil{
+	if config, err = ParseServerConfig(configFile); err != nil {
 		logger.Error("Read config file failed", zap.String("file", configFile), zap.String("error", err.Error()))
 		return
-	}else{
+	} else {
 		logger.Info("Read config file successful", zap.String("file", configFile))
 	}
 	logger.Info("Server config total", zap.Int("count", len(config.Servers)))
 	servers := make([]*impl.ProxyServer, 0)
-	for _, configEntry := range config.Servers{
-		if server, err := impl.StartProxyServer(configEntry); err != nil{
-			logger.Error("Start proxy server failed", zap.String("error",err.Error()))
-		}else{
+	for _, configEntry := range config.Servers {
+		if server, err := impl.StartProxyServer(configEntry); err != nil {
+			logger.Error("Start proxy server failed", zap.String("error", err.Error()))
+		} else {
 			servers = append(servers, server)
 		}
 	}
-	if len(servers) == 0{
+	if len(servers) == 0 {
 		return
 	}
-	defer func(){
-		for _, server := range servers{
+	defer func() {
+		for _, server := range servers {
 			server.Stop()
 		}
 	}()

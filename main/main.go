@@ -3,12 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
+	. "github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/dns_proxy"
 	"github.com/weishi258/redfrog-core/log"
 	"github.com/weishi258/redfrog-core/pac"
 	"github.com/weishi258/redfrog-core/proxy_client"
 	"github.com/weishi258/redfrog-core/routing"
-	. "github.com/weishi258/redfrog-core/config"
 	"go.uber.org/zap"
 	"math/rand"
 	"os"
@@ -20,14 +20,11 @@ import (
 var Version string
 var BuildTime string
 
-
-
 var serviceStopSignal chan bool
 var appRunStatus chan bool
 var sigChan chan os.Signal
 
-
-func main(){
+func main() {
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -46,10 +43,10 @@ func main(){
 	flag.BoolVar(&bProduction, "production", false, "is production mode")
 	flag.Parse()
 
-	defer func(){
-		if err != nil{
+	defer func() {
+		if err != nil {
 			os.Exit(1)
-		}else{
+		} else {
 			os.Exit(0)
 		}
 	}()
@@ -58,23 +55,22 @@ func main(){
 	logger := log.InitLogger(logLevel, bProduction)
 
 	// print version
-	if printVer{
+	if printVer {
 		logger.Info("RedFrog",
 			zap.String("Version", Version),
 			zap.String("BuildTime", BuildTime))
 		os.Exit(0)
 	}
 
-	defer func(){
+	defer func() {
 		logger.Sync()
 		logger.Info("RedFrog is exit")
-		if err != nil{
+		if err != nil {
 			os.Exit(1)
-		}else{
+		} else {
 			os.Exit(0)
 		}
 	}()
-
 
 	serviceStopSignal = make(chan bool)
 	appRunStatus = make(chan bool)
@@ -86,8 +82,8 @@ func main(){
 
 	go StartService(configFile)
 
-	runStatus := <- appRunStatus
-	if !runStatus{
+	runStatus := <-appRunStatus
+	if !runStatus {
 		os.Exit(1)
 	}
 	sig := <-sigChan
@@ -96,43 +92,40 @@ func main(){
 	logger.Info("RefFrog caught signal for exit", zap.Any("signal", sig))
 
 }
-func StartService(configFile string){
+func StartService(configFile string) {
 	logger := log.GetLogger()
 	status := false
-	defer func(){
+	defer func() {
 		appRunStatus <- status
 	}()
 	// parse config
 	var err error
 	var config Config
-	if config, err = ParseClientConfig(configFile); err != nil{
+	if config, err = ParseClientConfig(configFile); err != nil {
 		logger.Error("Read config file failed", zap.String("file", configFile), zap.String("error", err.Error()))
 		return
-	}else{
+	} else {
 		logger.Info("Read config file successful", zap.String("file", configFile))
 	}
 
-
 	// init routing mgr
 	var routingMgr *routing.RoutingMgr
-	if routingMgr, err = routing.StartRoutingMgr(config.ListenPort, config.PacketMask, config.IgnoreIP); err != nil{
+	if routingMgr, err = routing.StartRoutingMgr(config.ListenPort, config.PacketMask, config.IgnoreIP); err != nil {
 		logger.Error("Init routing manager failed", zap.String("error", err.Error()))
 		return
 	}
 	defer routingMgr.Stop()
 
-
 	// init pac list
 	var pacListMgr *pac.PacListMgr
-	if pacListMgr, err = pac.StartPacListMgr(routingMgr); err != nil{
+	if pacListMgr, err = pac.StartPacListMgr(routingMgr); err != nil {
 		logger.Error("Start pac list manager failed", zap.String("error", err.Error()))
 	}
 	defer pacListMgr.Stop()
 	pacListMgr.ReadPacList(config.Shadowsocks.PacList)
 
-
-	var proxyClient* proxy_client.ProxyClient
-	if proxyClient, err = proxy_client.StartProxyClient(config.Shadowsocks, fmt.Sprintf("0.0.0.0:%d", config.ListenPort)); err != nil{
+	var proxyClient *proxy_client.ProxyClient
+	if proxyClient, err = proxy_client.StartProxyClient(config.Shadowsocks, fmt.Sprintf("0.0.0.0:%d", config.ListenPort)); err != nil {
 		logger.Error("Start proxy client failed", zap.String("error", err.Error()))
 		return
 	}
@@ -141,7 +134,7 @@ func StartService(configFile string){
 	// Start Dns Server
 
 	var dnsServer *dns_proxy.DnsServer
-	if dnsServer, err = dns_proxy.StartDnsServer(config.Dns, pacListMgr, routingMgr, proxyClient); err != nil{
+	if dnsServer, err = dns_proxy.StartDnsServer(config.Dns, pacListMgr, routingMgr, proxyClient); err != nil {
 		logger.Error("Start dns_proxy server failed", zap.String("error", err.Error()))
 		return
 	}
@@ -151,7 +144,7 @@ func StartService(configFile string){
 	logger.Info("RefFrog service is up and running")
 
 	appRunStatus <- true
-	<- serviceStopSignal
+	<-serviceStopSignal
 
 	logger.Info("RedFrog service is stopped")
 }

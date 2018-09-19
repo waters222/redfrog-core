@@ -10,7 +10,7 @@ import (
 	"net"
 )
 
-func GetCipher(name string, password string) (ret kcp.AheadCipher, err error){
+func GetCipher(name string, password string) (ret kcp.AheadCipher, err error) {
 	pass := pbkdf2.Key([]byte(password), []byte("Red_Frog_Rocks!!!"), 4096, 32, sha1.New)
 
 	switch name {
@@ -23,7 +23,7 @@ func GetCipher(name string, password string) (ret kcp.AheadCipher, err error){
 	case "AES-256-GCM":
 		ret, _ = kcp.NewAES256GCM(pass[:32])
 	default:
-		err = errors.New(fmt.Sprintf("Unknown Kcp cither %s",  name))
+		err = errors.New(fmt.Sprintf("Unknown Kcp cither %s", name))
 	}
 
 	return ret, err
@@ -59,16 +59,16 @@ func (c *CompStream) Close() error {
 }
 
 //
-func GetModeSetting(mode string, noDelay, interval, resend, noCongestion int) (int, int, int, int){
+func GetModeSetting(mode string, noDelay, interval, resend, noCongestion int) (int, int, int, int) {
 	switch mode {
-		case "normal":
-			return 0, 40, 2, 1
-		case "fast":
-			return 0, 30, 2, 1
-		case "fast2":
-			return 1, 20, 2, 1
-		case "fast3":
-			return 1, 10, 2, 1
+	case "normal":
+		return 0, 40, 2, 1
+	case "fast":
+		return 0, 30, 2, 1
+	case "fast2":
+		return 1, 20, 2, 1
+	case "fast3":
+		return 1, 10, 2, 1
 	}
 	return noDelay, interval, resend, noCongestion
 }

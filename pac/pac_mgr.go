@@ -1,59 +1,57 @@
 package pac
 
 import (
-	"sync"
+	"bufio"
+	"bytes"
+	"fmt"
+	"github.com/pkg/errors"
+	"github.com/weishi258/redfrog-core/common"
 	"github.com/weishi258/redfrog-core/log"
+	"github.com/weishi258/redfrog-core/routing"
 	"go.uber.org/zap"
 	"os"
-	"github.com/pkg/errors"
-	"bufio"
 	"regexp"
-	"fmt"
-	"time"
-	"github.com/weishi258/redfrog-core/common"
-	"bytes"
-	"github.com/weishi258/redfrog-core/routing"
 	"strings"
+	"sync"
+	"time"
 )
 
 const MONITOR_INTERVAL = 5
 
-
 const (
-	regex_pacVersion_ 	= "^\\[(.*)\\]$"
+	regex_pacVersion_   = "^\\[(.*)\\]$"
 	regex_commentRegex_ = "^!(.*)$"
-	regex_whiteRegex_	= "^@@([^ ]+)$"
-	regex_http_https_	= "^\\|https?://([^ /]+)(/.*)?$"
-	regex_domain_0_		= "^\\|\\|([^ /]+)(/.*)?$"
-	regex_domain_1_		= "^\\.([^ /]+)(/.*)?$"
-	regex_domain_2_		= "([^\\*\\.]*\\*\\.)([^ /]+)(/.*)?$"
-	regex_ip_			= "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))/?(.*)$"
-	regex_domain_last_	= "^([^ /\\*\\|]+)(/.*)?$"
-	regex_domain_regex_	= "^/(.+)/$"
+	regex_whiteRegex_   = "^@@([^ ]+)$"
+	regex_http_https_   = "^\\|https?://([^ /]+)(/.*)?$"
+	regex_domain_0_     = "^\\|\\|([^ /]+)(/.*)?$"
+	regex_domain_1_     = "^\\.([^ /]+)(/.*)?$"
+	regex_domain_2_     = "([^\\*\\.]*\\*\\.)([^ /]+)(/.*)?$"
+	regex_ip_           = "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))/?(.*)$"
+	regex_domain_last_  = "^([^ /\\*\\|]+)(/.*)?$"
+	regex_domain_regex_ = "^/(.+)/$"
 )
 
-type PacList struct{
-	Domains			map[string]bool
-	IPs				map[string]bool
-	lastModified	time.Time
+type PacList struct {
+	Domains      map[string]bool
+	IPs          map[string]bool
+	lastModified time.Time
 }
-type ProxyList struct{
+type ProxyList struct {
 	// for proxy_client
-	proxyDomains		map[string]bool
-	proxyIPs			map[string]bool
-	mux      			sync.RWMutex
+	proxyDomains map[string]bool
+	proxyIPs     map[string]bool
+	mux          sync.RWMutex
 }
-type PacListMgr struct{
+type PacListMgr struct {
 	// for reading paclist and compare
-	pacLists 			map[string]*PacList
-	pacListsMux      	sync.Mutex
-	ticker	 			*time.Ticker
+	pacLists    map[string]*PacList
+	pacListsMux sync.Mutex
+	ticker      *time.Ticker
 
-	proxyList			ProxyList
+	proxyList ProxyList
 
 	// routing table
-	routingMgr			*routing.RoutingMgr
-
+	routingMgr *routing.RoutingMgr
 }
 
 //
@@ -108,39 +106,36 @@ type PacListMgr struct{
 //	logger.Info("Stop pac list files monitor")
 //}
 
-func (c* PacListMgr)composeProxyList(){
+func (c *PacListMgr) composeProxyList() {
 	logger := log.GetLogger()
 
 	proxyDomains := make(map[string]bool)
 	proxyIPs := make(map[string]bool)
 
-	func(){
+	func() {
 		c.pacListsMux.Lock()
 		defer c.pacListsMux.Unlock()
-		for _, pacList := range c.pacLists{
-			for domain, flag := range pacList.Domains{
+		for _, pacList := range c.pacLists {
+			for domain, flag := range pacList.Domains {
 				proxyDomains[domain] = flag
 			}
-			for ip, flag := range pacList.IPs{
+			for ip, flag := range pacList.IPs {
 				proxyIPs[ip] = flag
 			}
 		}
 	}()
-
 
 	c.proxyList.mux.Lock()
 	defer c.proxyList.mux.Unlock()
 	c.proxyList.proxyDomains = proxyDomains
 	c.proxyList.proxyIPs = proxyIPs
 
-
-
 	logger.Info("Composing new proxy_client list finished, start to populate routing table")
 	// now lets re-populate routing table
 	c.routingMgr.LoadPacList(proxyDomains, proxyIPs)
 }
 
-func StartPacListMgr(routingMgr *routing.RoutingMgr) (ret *PacListMgr, err error){
+func StartPacListMgr(routingMgr *routing.RoutingMgr) (ret *PacListMgr, err error) {
 	logger := log.GetLogger()
 	ret = &PacListMgr{}
 	if routingMgr == nil {
@@ -155,25 +150,24 @@ func StartPacListMgr(routingMgr *routing.RoutingMgr) (ret *PacListMgr, err error
 	logger.Info("Start pac List Manager successful")
 	return
 }
-func (c *PacListMgr)Stop(){
+func (c *PacListMgr) Stop() {
 	logger := log.GetLogger()
 	logger.Info("Stop pac List Manager successful")
 }
 
-
-func (c *PacListMgr)ReadPacList(paths []string){
+func (c *PacListMgr) ReadPacList(paths []string) {
 	logger := log.GetLogger()
-	for _, path := range paths{
-		if _, ok := c.pacLists[path]; !ok{
-			if ret, err := parsePacList(path); err != nil{
+	for _, path := range paths {
+		if _, ok := c.pacLists[path]; !ok {
+			if ret, err := parsePacList(path); err != nil {
 				logger.Error("Parse Pac List file failed", zap.String("file", path), zap.String("error", err.Error()))
-			}else{
+			} else {
 				c.pacListsMux.Lock()
 				c.pacLists[path] = ret
 				c.pacListsMux.Unlock()
 				logger.Info("Parse Pac List file successful", zap.String("file", path))
 			}
-		}else{
+		} else {
 			logger.Warn("Pac list file path duplicated, so skip parsing", zap.String("file", path))
 		}
 
@@ -183,14 +177,13 @@ func (c *PacListMgr)ReadPacList(paths []string){
 	return
 }
 
-
-func (c *PacListMgr)AddDomain(domain string){
+func (c *PacListMgr) AddDomain(domain string) {
 	c.proxyList.mux.Lock()
 	defer c.proxyList.mux.Unlock()
 	c.proxyList.proxyDomains[domain] = common.DOMAIN_BLACK_LIST
 }
 
-func (c * PacListMgr)CheckDomain(domain string) bool{
+func (c *PacListMgr) CheckDomain(domain string) bool {
 	logger := log.GetLogger()
 
 	if len(domain) == 0 {
@@ -200,8 +193,8 @@ func (c * PacListMgr)CheckDomain(domain string) bool{
 	stubs := strings.Split(domain, ".")
 	{
 		segs := make([]string, 0)
-		for _, stub := range stubs{
-			if len(stub) > 0{
+		for _, stub := range stubs {
+			if len(stub) > 0 {
 				segs = append(segs, stub)
 			}
 		}
@@ -209,14 +202,14 @@ func (c * PacListMgr)CheckDomain(domain string) bool{
 	}
 
 	len := len(stubs)
-	for i := len - 2; i >= 0; i--{
+	for i := len - 2; i >= 0; i-- {
 		stubs[i] = fmt.Sprintf("%s.%s", stubs[i], stubs[i+1])
 	}
 	c.proxyList.mux.RLock()
 	proxyList := c.proxyList.proxyDomains
 	c.proxyList.mux.RUnlock()
 
-	for i := 0; i < len; i++{
+	for i := 0; i < len; i++ {
 		if blacked, ok := proxyList[stubs[i]]; ok {
 			logger.Debug("Domain is in proxy_client list", zap.String("domain", domain), zap.Bool("blacked", blacked))
 			return blacked
@@ -227,8 +220,7 @@ func (c * PacListMgr)CheckDomain(domain string) bool{
 	return false
 }
 
-
-func parsePacList(path string)  (ret *PacList, err error){
+func parsePacList(path string) (ret *PacList, err error) {
 	logger := log.GetLogger()
 
 	file, err := os.Open(path) // For read access.
@@ -240,26 +232,26 @@ func parsePacList(path string)  (ret *PacList, err error){
 	ret = &PacList{}
 	ret.Domains = make(map[string]bool)
 	ret.IPs = make(map[string]bool)
-	if lastModified, err := os.Stat(path); err != nil{
+	if lastModified, err := os.Stat(path); err != nil {
 		logger.Error("Get pac file stat failed", zap.String("file", path), zap.String("error", err.Error()))
 		ret.lastModified = time.Now()
-	}else{
+	} else {
 		ret.lastModified = lastModified.ModTime()
 	}
 
 	reader := bufio.NewReader(file)
 
 	lineBuffer := make([]byte, 0)
-	for line, isPrefix, readError := reader.ReadLine(); readError == nil; line, isPrefix, readError = reader.ReadLine(){
+	for line, isPrefix, readError := reader.ReadLine(); readError == nil; line, isPrefix, readError = reader.ReadLine() {
 		if isPrefix {
 			lineBuffer = append(lineBuffer, line...)
-		}else if len(lineBuffer) > 0 {
-			if err = ret.parsePacListLine(lineBuffer); err != nil{
+		} else if len(lineBuffer) > 0 {
+			if err = ret.parsePacListLine(lineBuffer); err != nil {
 				return nil, err
 			}
 			lineBuffer = make([]byte, 0)
-		}else{
-			if err = ret.parsePacListLine(line); err != nil{
+		} else {
+			if err = ret.parsePacListLine(line); err != nil {
 				return nil, err
 			}
 		}
@@ -271,19 +263,18 @@ func parsePacList(path string)  (ret *PacList, err error){
 	return
 }
 
-
-func (c *PacList)equal(other *PacList) bool{
+func (c *PacList) equal(other *PacList) bool {
 	if len(c.Domains) != len(other.Domains) ||
-		len(c.IPs) != len(other.IPs){
+		len(c.IPs) != len(other.IPs) {
 		return false
 	}
-	for key := range c.Domains{
-		if _, ok := other.Domains[key]; !ok{
+	for key := range c.Domains {
+		if _, ok := other.Domains[key]; !ok {
 			return false
 		}
 	}
-	for key := range c.IPs{
-		if _, ok := other.IPs[key]; !ok{
+	for key := range c.IPs {
+		if _, ok := other.IPs[key]; !ok {
 			return false
 		}
 	}
@@ -291,8 +282,8 @@ func (c *PacList)equal(other *PacList) bool{
 	return true
 }
 
-func (c *PacList) parsePacListLine(line []byte) (err error){
-	if len(line) == 0{
+func (c *PacList) parsePacListLine(line []byte) (err error) {
+	if len(line) == 0 {
 		return
 	}
 	//logger := log.GetLogger()
@@ -302,7 +293,7 @@ func (c *PacList) parsePacListLine(line []byte) (err error){
 	line = bytes.Replace(line, []byte{' '}, []byte{}, -1)
 
 	// pac version
-	if re , err = regexp.Compile(regex_pacVersion_); err != nil{
+	if re, err = regexp.Compile(regex_pacVersion_); err != nil {
 		return errors.Wrap(err, fmt.Sprintf("Compile regex failed: %s", regex_pacVersion_))
 	}
 	if re.Match(line) {
@@ -311,7 +302,7 @@ func (c *PacList) parsePacListLine(line []byte) (err error){
 	}
 
 	// pac comment
-	if re , err = regexp.Compile(regex_commentRegex_); err != nil{
+	if re, err = regexp.Compile(regex_commentRegex_); err != nil {
 		return errors.Wrap(err, fmt.Sprintf("Compile regex failed: %s", regex_commentRegex_))
 	}
 	if re.Match(line) {
@@ -321,7 +312,7 @@ func (c *PacList) parsePacListLine(line []byte) (err error){
 
 	// white domain
 	bDomainType := common.DOMAIN_BLACK_LIST
-	if re , err = regexp.Compile(regex_whiteRegex_); err != nil{
+	if re, err = regexp.Compile(regex_whiteRegex_); err != nil {
 		return errors.Wrap(err, fmt.Sprintf("Compile regex failed: %s", regex_whiteRegex_))
 	}
 
@@ -335,16 +326,15 @@ func (c *PacList) parsePacListLine(line []byte) (err error){
 	}
 
 	// http and https
-	if re , err = regexp.Compile(regex_http_https_); err != nil{
+	if re, err = regexp.Compile(regex_http_https_); err != nil {
 		return errors.Wrap(err, fmt.Sprintf("Compile regex failed: %s", regex_http_https_))
 	}
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 0 {
 		matchByte = matches[0][1]
 	}
 
-
 	// domain 0
-	if re , err = regexp.Compile(regex_domain_0_); err != nil{
+	if re, err = regexp.Compile(regex_domain_0_); err != nil {
 		return errors.Wrap(err, fmt.Sprintf("Compile regex failed: %s", regex_domain_0_))
 	}
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 0 {
@@ -352,16 +342,15 @@ func (c *PacList) parsePacListLine(line []byte) (err error){
 	}
 
 	// domain 1
-	if re , err = regexp.Compile(regex_domain_1_); err != nil{
+	if re, err = regexp.Compile(regex_domain_1_); err != nil {
 		return errors.Wrap(err, fmt.Sprintf("Compile regex failed: %s", regex_domain_1_))
 	}
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 0 {
 		matchByte = matches[0][1]
 	}
 
-
 	// domain 2
-	if re , err = regexp.Compile(regex_domain_2_); err != nil{
+	if re, err = regexp.Compile(regex_domain_2_); err != nil {
 		return errors.Wrap(err, fmt.Sprintf("Compile regex failed: %s", regex_domain_2_))
 	}
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 1 {
@@ -369,7 +358,7 @@ func (c *PacList) parsePacListLine(line []byte) (err error){
 	}
 
 	// ip
-	if re , err = regexp.Compile(regex_ip_); err != nil{
+	if re, err = regexp.Compile(regex_ip_); err != nil {
 		return errors.Wrap(err, fmt.Sprintf("Compile regex failed: %s", regex_ip_))
 	}
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 0 {
@@ -379,9 +368,8 @@ func (c *PacList) parsePacListLine(line []byte) (err error){
 		return
 	}
 
-
 	// domain last
-	if re , err = regexp.Compile(regex_domain_last_); err != nil{
+	if re, err = regexp.Compile(regex_domain_last_); err != nil {
 		return errors.Wrap(err, fmt.Sprintf("Compile regex failed: %s", regex_domain_last_))
 	}
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 0 {
@@ -391,16 +379,15 @@ func (c *PacList) parsePacListLine(line []byte) (err error){
 		return
 	}
 
-
 	// domain regex
-	if re , err = regexp.Compile(regex_domain_regex_); err != nil{
+	if re, err = regexp.Compile(regex_domain_regex_); err != nil {
 		return errors.Wrap(err, fmt.Sprintf("Compile regex failed: %s", regex_domain_regex_))
 	}
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 0 {
 		domain := string(matches[0][1][:])
 		c.Domains[domain] = bDomainType
 		//logger.Debug("ParsePAC find domain", zap.String("line", string(line[:])), zap.String("domain", domain), zap.Bool("black_list", bDomainType))
-	}else{
+	} else {
 		//logger.Debug("ParsePAC can not find domain or ip", zap.String("line", string(line[:])))
 	}
 	return

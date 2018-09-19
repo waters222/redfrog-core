@@ -15,14 +15,13 @@ import (
 )
 
 type KCPServer struct {
-	config 			config.KcptunConfig
-	cipher			kcp.AheadCipher
-	listener		*kcp.Listener
-	timeout			time.Duration
-
+	config   config.KcptunConfig
+	cipher   kcp.AheadCipher
+	listener *kcp.Listener
+	timeout  time.Duration
 }
 
-func StartKCPServer(config config.KcptunConfig, crypt string, password string, timeoutValue int) (ret *KCPServer, err error){
+func StartKCPServer(config config.KcptunConfig, crypt string, password string, timeoutValue int) (ret *KCPServer, err error) {
 	logger := log.GetLogger()
 	ret = &KCPServer{}
 	ret.config = config
@@ -33,13 +32,12 @@ func StartKCPServer(config config.KcptunConfig, crypt string, password string, t
 		ret.config.NoCongestion)
 	ret.timeout = time.Second * time.Duration(timeoutValue)
 
-	if ret.cipher, err  = kcp_helper.GetCipher(crypt, password); err != nil{
+	if ret.cipher, err = kcp_helper.GetCipher(crypt, password); err != nil {
 		err = errors.Wrap(err, "Create Kcp cipher failed")
 		return
 	}
 
-
-	if ret.listener, err = kcp.ListenWithOptionsAhead(ret.config.ListenAddr, config.ThreadCount, ret.cipher, ret.config.Datashard, ret.config.Parityshard); err != nil{
+	if ret.listener, err = kcp.ListenWithOptionsAhead(ret.config.ListenAddr, config.ThreadCount, ret.cipher, ret.config.Datashard, ret.config.Parityshard); err != nil {
 		err = errors.Wrap(err, "Kcp Listen failed")
 		return
 	}
@@ -62,23 +60,22 @@ func StartKCPServer(config config.KcptunConfig, crypt string, password string, t
 	return
 }
 
-
-func (c *KCPServer)Stop(){
+func (c *KCPServer) Stop() {
 	logger := log.GetLogger()
-	if err := c.listener.Close(); err != nil{
+	if err := c.listener.Close(); err != nil {
 		logger.Error("Kcp stop failed", zap.String("error", err.Error()))
 	}
 	logger.Info("Kcp server stopped")
 }
 
-func (c *KCPServer)startAccept(){
+func (c *KCPServer) startAccept() {
 	logger := log.GetLogger()
-	for{
-		if conn, err := c.listener.AcceptKCP(); err != nil{
-			if ee, ok := err.(*net.OpError); ok && ee != nil && ee.Err.Error() != "use of closed network connection"{
+	for {
+		if conn, err := c.listener.AcceptKCP(); err != nil {
+			if ee, ok := err.(*net.OpError); ok && ee != nil && ee.Err.Error() != "use of closed network connection" {
 				logger.Info("Kcp accept failed", zap.String("error", err.Error()))
 			}
-		}else{
+		} else {
 			conn.SetStreamMode(true)
 			conn.SetWriteDelay(true)
 			conn.SetNoDelay(c.config.Nodelay, c.config.Interval, c.config.Resend, c.config.NoCongestion)
@@ -94,7 +91,7 @@ func (c *KCPServer)startAccept(){
 		}
 	}
 }
-func (c *KCPServer) handleConnection(conn io.ReadWriteCloser){
+func (c *KCPServer) handleConnection(conn io.ReadWriteCloser) {
 	logger := log.GetLogger()
 
 	smuxConfig := smux.DefaultConfig()
@@ -109,27 +106,27 @@ func (c *KCPServer) handleConnection(conn io.ReadWriteCloser){
 	}
 	defer mux.Close()
 	for {
-		if kcpConn, err := mux.AcceptStream(); err != nil{
+		if kcpConn, err := mux.AcceptStream(); err != nil {
 			logger.Debug("Kcp server accept stream stopped", zap.String("error", err.Error()))
 			return
-		}else{
+		} else {
 			go c.handleRelay(kcpConn)
 		}
 	}
 }
-func (c *KCPServer)handleRelay(kcpConn *smux.Stream) {
+func (c *KCPServer) handleRelay(kcpConn *smux.Stream) {
 	logger := log.GetLogger()
 
 	defer kcpConn.Close()
 
 	dstAddr, err := socks.ReadAddr(kcpConn)
-	if err != nil{
+	if err != nil {
 		logger.Error("Kcp read dst addr failed", zap.String("error", err.Error()))
 		return
 	}
 
 	remoteConn, err := net.Dial("tcp", dstAddr.String())
-	if err != nil{
+	if err != nil {
 		logger.Info("Kcp dial dst failed", zap.String("error", err.Error()))
 		return
 	}
@@ -162,9 +159,9 @@ func (c *KCPServer)handleRelay(kcpConn *smux.Stream) {
 	if err == nil {
 		err = rs.Err
 	}
-	if err != nil{
+	if err != nil {
 		logger.Debug("Kcp relay finished", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize), zap.String("error", err.Error()))
-	}else{
+	} else {
 		logger.Debug("Kcp relay finished", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize))
 	}
 
