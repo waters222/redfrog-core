@@ -107,6 +107,7 @@ type DnsConfig struct {
 	LocalResolver		[]string	`yaml:"local-resolver"`
 	ProxyResolver		[]string	`yaml:"proxy-resolver"`
 	DnsTimeout			int			`yaml:"dns-timeout"`
+	SendNum				int			`yaml:"send-num"`
 	Cache				DnsCacheConfig	`yaml:"cache"`
 }
 

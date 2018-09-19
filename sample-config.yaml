@@ -12,6 +12,7 @@ dns:
     - "10.0.0.1"
   proxy-resolver:
     - "8.8.8.8"
+  send-num: 2
   cache:
     enable: true
     timeout: 30

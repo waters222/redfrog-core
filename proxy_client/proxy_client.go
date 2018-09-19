@@ -471,7 +471,7 @@ func (c *ProxyClient) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, l
 	return nil
 }
 
-func (c *ProxyClient) ExchangeDNS(srcAddr string, dnsAddr string, data []byte, dnsTimeout time.Duration) (response []byte, err error){
+func (c *ProxyClient) ExchangeDNS(srcAddr string, dnsAddr string, data []byte, dnsTimeout time.Duration, times int) (response []byte, err error){
 	//logger := log.GetLogger()
 
 
@@ -514,10 +514,11 @@ func (c *ProxyClient) ExchangeDNS(srcAddr string, dnsAddr string, data []byte, d
 
 	// set timeout for each send
 	// write to remote shadowsocks server
-
-	if _, err = dnsEntry.conn.WriteTo(buffer.Bytes()[:totalLen], dnsEntry.proxyAddr); err != nil{
-		err = errors.Wrap(err, "Write to remote DNS failed")
-		return
+	for i := 0; i < times; i++{
+		if _, err = dnsEntry.conn.WriteTo(buffer.Bytes()[:totalLen], dnsEntry.proxyAddr); err != nil{
+			err = errors.Wrap(err, "Write to remote DNS failed")
+			return
+		}
 	}
 
 	dnsEntry.conn.SetReadDeadline(time.Now().Add(dnsTimeout))

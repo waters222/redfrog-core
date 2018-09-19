@@ -40,6 +40,7 @@ type DnsServer struct {
 	dnsResolverMux 		sync.RWMutex
 
 	dnsCaches			*dnsCache
+	sendNum				int
 }
 
 type dnsCacheEntry struct {
@@ -128,6 +129,10 @@ func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingM
 
 	if dnsConfig.Cache.Enable{
 		ret.dnsCaches = &dnsCache{caches: make(map[string]*dnsCacheEntry), timeout: time.Duration(dnsConfig.Cache.Timeout) * time.Second}
+	}
+	ret.sendNum = dnsConfig.SendNum
+	if ret.sendNum < 1{
+		ret.sendNum = 1
 	}
 
 	return
@@ -221,7 +226,7 @@ func (c *DnsServer)ServeDNS(w dns.ResponseWriter, r *dns.Msg){
 			logger.Error("Pack DNS query for proxy failed", zap.String("error", err.Error()))
 			return
 		}
-		responseBytes, err := c.proxyClient.ExchangeDNS(w.RemoteAddr().String(), resolver.addr, data, c.dnsTimeout)
+		responseBytes, err := c.proxyClient.ExchangeDNS(w.RemoteAddr().String(), resolver.addr, data, c.dnsTimeout, c.sendNum)
 		if err != nil{
 			logger.Error("DNS proxy resolve failed", zap.String("domain", domainName),zap.String("error", err.Error()))
 			return
