@@ -3,10 +3,10 @@ package proxy_client
 import (
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/weishi258/kcp-go-ng"
 	"github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/kcp_helper"
 	"github.com/weishi258/redfrog-core/log"
-	"github.com/weishi258/kcp-go"
 	"github.com/xtaci/smux"
 	"go.uber.org/zap"
 	"sync"
@@ -39,7 +39,8 @@ func StartKCPBackend(config config.KcptunConfig, crypt string, password string) 
 	ret.config = config
 	ret.smuxConfig = smux.DefaultConfig()
 	ret.smuxConfig.MaxReceiveBuffer = config.Sockbuf
-	ret.smuxConfig.KeepAliveInterval = time.Duration(config.KeepAlive) * time.Second
+	ret.smuxConfig.KeepAliveInterval = time.Duration(config.KeepAliveInterval) * time.Second
+	ret.smuxConfig.KeepAliveTimeout = time.Duration(config.KeepAliveTimeout) * time.Second
 
 
 	ret.config.Nodelay, ret.config.Interval, ret.config.Resend, ret.config.NoCongestion = kcp_helper.GetModeSetting(ret.config.Mode,

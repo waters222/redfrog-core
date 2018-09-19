@@ -28,7 +28,7 @@ shadowsocks:
         server: "10.0.0.51:20010"
         mode: "fast"
         thread: 4
-        conn: 1
+        conn: 4
         autoexpire: 0
         mtu: 1350
         sndwnd: 128
@@ -37,7 +37,8 @@ shadowsocks:
         parityshard: -1
         dscp: 0
         nocomp: false
-        keep-alive: 10
+        keep-alive-interval: 10
+        keep-alive-timeout: 120
         sock-buf : 4194304
     - remote-server: "10.0.0.51:20001"
       crypt: "AEAD_CHACHA20_POLY1305"
@@ -47,7 +48,7 @@ shadowsocks:
         server: "10.0.0.51:20011"
         mode: "fast"
         thread: 4
-        conn: 1
+        conn: 4
         autoexpire: 0
         mtu: 1350
         sndwnd: 128
@@ -56,5 +57,6 @@ shadowsocks:
         parityshard: -1
         dscp: 0
         nocomp: false
-        keep-alive: 10
+        keep-alive-interval: 10
+        keep-alive-timeout: 120
         sock-buf : 4194304

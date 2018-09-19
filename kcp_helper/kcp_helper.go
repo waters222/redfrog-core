@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/golang/snappy"
 	"github.com/pkg/errors"
-	"github.com/weishi258/kcp-go"
+	"github.com/weishi258/kcp-go-ng"
 	"golang.org/x/crypto/pbkdf2"
 	"net"
 )

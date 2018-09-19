@@ -3,7 +3,7 @@ package impl
 import (
 	"github.com/pkg/errors"
 	"github.com/shadowsocks/go-shadowsocks2/socks"
-	"github.com/weishi258/kcp-go"
+	"github.com/weishi258/kcp-go-ng"
 	"github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/kcp_helper"
 	"github.com/weishi258/redfrog-core/log"
@@ -99,7 +99,8 @@ func (c *KCPServer) handleConnection(conn io.ReadWriteCloser){
 
 	smuxConfig := smux.DefaultConfig()
 	smuxConfig.MaxReceiveBuffer = c.config.Sockbuf
-	smuxConfig.KeepAliveInterval = time.Duration(c.config.KeepAlive) * time.Second
+	smuxConfig.KeepAliveInterval = time.Duration(c.config.KeepAliveInterval) * time.Second
+	smuxConfig.KeepAliveTimeout = time.Duration(c.config.KeepAliveTimeout) * time.Second
 
 	mux, err := smux.Server(conn, smuxConfig)
 	if err != nil {
