@@ -1,5 +1,9 @@
 packet-mask: "0x1/0x1"
 listen-port: 9090
+addr: "192.168.0.1"
+gateway: "10.0.0.1"
+interface-in: "enp0s8"
+interface-out: "enp0s9"
 dhcp:
   enable: true
   start: "192.168.0.2"

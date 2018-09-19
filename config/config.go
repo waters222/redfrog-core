@@ -128,8 +128,11 @@ type Config struct {
 	PacketMask     string            `yaml:"packet-mask"`
 	ListenPort     int               `yaml:"listen-port"`
 	IgnoreIP       []string          `yaml:"ignore-ip"`
-	DefaultGateway string            `yaml:"default-gateway"`
-	IPAddr         string            `yaml:"ip-addr"`
+
+	Gateway 		string            `yaml:"gateway"`
+	Addr         	string            `yaml:"addr"`
+	InterfaceIn     string            `yaml:"interface-in"`
+	InterfaceOut    string            `yaml:"interface-out"`
 }
 
 func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {

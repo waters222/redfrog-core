@@ -17,21 +17,24 @@ const (
 	TPROXY_TABLE_NUM = "100"
 )
 
-func PrepareGateway(mark string) (err error) {
+func PrepareGateway(interfaceIn string, interfaceOut string,mark string) (err error) {
 	if err = IncreaseFileDescriptor(); err != nil {
 		return
 	}
 	if err = enableForward(); err != nil {
 		return
 	}
-	if err = enableRouting(false); err != nil {
+	if err = enableRouting(interfaceIn, interfaceOut, false); err != nil {
 		err = errors.Wrap(err, "Enable ipv4 routing failed")
 	}
-	if err = enableRouting(true); err != nil {
+	if err = enableRouting(interfaceIn, interfaceOut, true); err != nil {
 		err = errors.Wrap(err, "Enable ipv6 routing failed")
 	}
 
-	if err = addTProxyRouting(mark); err != nil {
+	if err = addTProxyRoutingIPv4(mark); err != nil {
+		err = errors.Wrap(err, "Enable TProxy failed")
+	}
+	if err = addTProxyRoutingIPv6(mark); err != nil {
 		err = errors.Wrap(err, "Enable TProxy failed")
 	}
 	return
@@ -63,49 +66,52 @@ func enableForward() (err error) {
 	return
 }
 
-func enableRouting(isIPv6 bool) (err error) {
+func enableRouting(interfaceIn string, interfaceOut string, isIPv6 bool) (err error) {
 	var iptble *iptables.IPTables
-	if !isIPv6 {
-		if iptble, err = iptables.New(); err != nil {
+	if !isIPv6{
+		if iptble, err = iptables.New(); err != nil{
 			return err
 		}
-	} else {
-		if iptble, err = iptables.NewWithProtocol(iptables.ProtocolIPv6); err != nil {
+	}else{
+		if iptble, err = iptables.NewWithProtocol(iptables.ProtocolIPv6); err != nil{
 			return err
 		}
 	}
 
-	if err = iptble.FlushChain(TABLE_FILTER, CHAIN_INPUT); err != nil {
+	if err = iptble.FlushChain(TABLE_FILTER, CHAIN_INPUT); err != nil{
 		return
 	}
-	if err = iptble.Append(TABLE_FILTER, CHAIN_INPUT, "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"); err != nil {
+	if err = iptble.Append(TABLE_FILTER, CHAIN_INPUT, "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"); err != nil{
 		return
 	}
-	if err = iptble.Append(TABLE_FILTER, CHAIN_INPUT, "-p", "udp", "--dport", "53", "-j", "ACCEPT"); err != nil {
-		return
-	}
-
-	if err = iptble.FlushChain(TABLE_FILTER, CHAIN_FORWARD); err != nil {
-		return
-	}
-	if err = iptble.Append(TABLE_FILTER, CHAIN_FORWARD, "-j", "ACCEPT"); err != nil {
-		return
-	}
-	if err = iptble.Append(TABLE_FILTER, CHAIN_FORWARD, "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"); err != nil {
+	if err = iptble.Append(TABLE_FILTER, CHAIN_INPUT, "-i", interfaceIn, "-p", "udp", "--dport", "53", "-j", "ACCEPT"); err != nil{
 		return
 	}
 
-	if err = iptble.FlushChain(TABlE_NAT, CHAIN_POSTROUTING); err != nil {
+	if err = iptble.FlushChain(TABLE_FILTER, CHAIN_FORWARD); err != nil{
 		return
 	}
-	if err = iptble.Append(TABlE_NAT, CHAIN_POSTROUTING, "-j", "MASQUERADE"); err != nil {
+	if err = iptble.Append(TABLE_FILTER, CHAIN_FORWARD, "-i", interfaceIn, "-o", interfaceOut, "-j", "ACCEPT"); err != nil{
 		return
 	}
+	if err = iptble.Append(TABLE_FILTER, CHAIN_FORWARD, "-i", interfaceOut, "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"); err != nil{
+		return
+	}
+
+
+	if err = iptble.FlushChain(TABlE_NAT, CHAIN_POSTROUTING); err != nil{
+		return
+	}
+	if err = iptble.Append(TABlE_NAT, CHAIN_POSTROUTING,  "-o", interfaceOut, "-j", "MASQUERADE"); err != nil{
+		return
+	}
+
 
 	return nil
 }
 
-func addTProxyRouting(mark string) (err error) {
+
+func addTProxyRoutingIPv4(mark string) (err error) {
 	cmd := exec.Command("ip", "rule", "list", "fwmark", mark, "lookup", TPROXY_TABLE_NUM)
 	var response []byte
 	if response, err = cmd.Output(); err != nil {
@@ -126,6 +132,35 @@ func addTProxyRouting(mark string) (err error) {
 	if len(response) == 0 {
 		// need to add new
 		cmd = exec.Command("ip", "route", "replace", "local", "0.0.0.0/0", "dev", "lo", "table", TPROXY_TABLE_NUM)
+		if err = cmd.Run(); err != nil {
+			return
+		}
+	}
+
+	return
+}
+
+func addTProxyRoutingIPv6(mark string) (err error) {
+	cmd := exec.Command("ip", "-6", "rule", "list", "fwmark", mark, "lookup", TPROXY_TABLE_NUM)
+	var response []byte
+	if response, err = cmd.Output(); err != nil {
+		return
+	}
+	if len(response) == 0 {
+		// need to add new
+		cmd = exec.Command("ip", "-6","rule", "add", "fwmark", mark, "lookup", TPROXY_TABLE_NUM)
+		if err = cmd.Run(); err != nil {
+			return
+		}
+	}
+
+	cmd = exec.Command("ip", "-6","route", "::/128", "dev", "lo", "table", TPROXY_TABLE_NUM)
+	if response, err = cmd.Output(); err != nil {
+		return
+	}
+	if len(response) == 0 {
+		// need to add new
+		cmd = exec.Command("ip", "-6","route", "replace", "local", "::/128", "dev", "lo", "table", TPROXY_TABLE_NUM)
 		if err = cmd.Run(); err != nil {
 			return
 		}
