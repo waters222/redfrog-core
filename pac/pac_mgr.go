@@ -11,7 +11,6 @@ import (
 	"go.uber.org/zap"
 	"os"
 	"regexp"
-	"strings"
 	"sync"
 	"time"
 )
@@ -183,33 +182,25 @@ func (c *PacListMgr) AddDomain(domain string) {
 	c.proxyList.proxyDomains[domain] = common.DOMAIN_BLACK_LIST
 }
 
+
+
+
 func (c *PacListMgr) CheckDomain(domain string) bool {
 	logger := log.GetLogger()
-
-	if len(domain) == 0 {
-		logger.Debug("Domain is NOT in proxy_client list", zap.String("domain", domain))
+	stubs := common.GenerateDomainStubs(domain)
+	if stubs == nil{
 		return false
 	}
-	stubs := strings.Split(domain, ".")
-	{
-		segs := make([]string, 0)
-		for _, stub := range stubs {
-			if len(stub) > 0 {
-				segs = append(segs, stub)
-			}
-		}
-		stubs = segs
+	length := len(stubs)
+	if length == 0{
+		return false
 	}
 
-	len := len(stubs)
-	for i := len - 2; i >= 0; i-- {
-		stubs[i] = fmt.Sprintf("%s.%s", stubs[i], stubs[i+1])
-	}
 	c.proxyList.mux.RLock()
+	defer c.proxyList.mux.RUnlock()
 	proxyList := c.proxyList.proxyDomains
-	c.proxyList.mux.RUnlock()
 
-	for i := 0; i < len; i++ {
+	for i := 0; i < length; i++ {
 		if blacked, ok := proxyList[stubs[i]]; ok {
 			logger.Debug("Domain is in proxy_client list", zap.String("domain", domain), zap.Bool("blacked", blacked))
 			return blacked

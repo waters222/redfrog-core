@@ -195,8 +195,30 @@ func (c *RoutingMgr) serializeRoutingTable() (err error) {
 	}
 	defer file.Close()
 	c.Lock()
-	defer c.Unlock()
-	cache := &RoutingMgrCache{c.ipListV4, c.ipListV6}
+	// strip empty ip
+	ipListV4 := make(map[string][]net.IP)
+	ipListV6 := make(map[string][]net.IP)
+	for domain, ips := range c.ipListV4{
+		if ips != nil && len(ips) > 0{
+			// make sure its not ip addrs
+			if tempIP := net.ParseIP(domain); tempIP == nil{
+				ipListV4[domain] = ips
+			}
+		}
+
+
+	}
+	for domain, ips := range c.ipListV6{
+		if ips != nil && len(ips) > 0{
+			// make sure its not ip addrs
+			if tempIP := net.ParseIP(domain); tempIP == nil{
+				ipListV6[domain] = ips
+			}
+		}
+	}
+	c.Unlock()
+
+	cache := &RoutingMgrCache{ipListV4, ipListV6}
 	data, err := yaml.Marshal(cache)
 	if err != nil {
 		err = errors.Wrap(err, "Marshal routing cache failed")
@@ -327,39 +349,53 @@ func (c *RoutingMgr) LoadPacList(domains map[string]bool, ips map[string]bool) {
 				c.ipListV4[ipInput] = []net.IP{ip}
 				ipv4tablesList = append(ipv4tablesList, ip.String())
 			} else {
-				ipv6tablesList = append(ipv6tablesList, ip.String())
 				c.ipListV6[ipInput] = []net.IP{ip}
+				ipv6tablesList = append(ipv6tablesList, ip.String())
 			}
 
 		}
-
 	}
+
+	for domain, bDomainListType := range domains {
+		if bDomainListType == common.DOMAIN_BLACK_LIST {
+			c.ipListV4[domain] = []net.IP{}
+			c.ipListV6[domain] = []net.IP{}
+		}
+	}
+
 	if cache, err := c.deserializeRoutingTable(); err != nil {
 		logger.Error("Reading routing cache failed", zap.String("error", err.Error()))
+	} else {
+		for domain, ips := range cache.IPv4{
+			if ips != nil && len(ips) > 0{
+				if stubs := common.GenerateDomainStubs(domain); stubs != nil && len(stubs) > 0{
+					for _, stub := range stubs{
+						if entry, ok := c.ipListV4[stub]; ok {
+							for _, ip := range ips {
+								c.ipListV4[domain] = append(entry, ip)
+								ipv4tablesList = append(ipv4tablesList, ip.String())
+							}
+						}
+					}
 
-		for domain, bDomainListType := range domains {
-			if bDomainListType == common.DOMAIN_BLACK_LIST {
-				c.ipListV4[domain] = []net.IP{}
-				c.ipListV6[domain] = []net.IP{}
+				}
 			}
 		}
-	} else {
-		for domain, bDomainListType := range domains {
-			if bDomainListType == common.DOMAIN_BLACK_LIST {
-				if ips, ok := cache.IPv4[domain]; ok {
-					c.ipListV4[domain] = ips
-					for _, ip := range ips {
-						ipv4tablesList = append(ipv4tablesList, ip.String())
+		for domain, ips := range cache.IPv6{
+			if ips != nil && len(ips) > 0{
+				if stubs := common.GenerateDomainStubs(domain); stubs != nil && len(stubs) > 0{
+					for _, stub := range stubs{
+						if entry, ok := c.ipListV6[stub]; ok {
+							for _, ip := range ips {
+								c.ipListV6[domain] = append(entry, ip)
+								ipv6tablesList = append(ipv6tablesList, ip.String())
+							}
+						}
 					}
-				}
-				if ips, ok := cache.IPv6[domain]; ok {
-					c.ipListV6[domain] = ips
-					for _, ip := range ips {
-						ipv6tablesList = append(ipv6tablesList, ip.String())
-					}
-				}
 
+				}
 			}
+
 		}
 	}
 	c.Unlock()
