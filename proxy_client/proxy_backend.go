@@ -22,9 +22,6 @@ type proxyBackend struct {
 	networkType_ string
 	tcpTimeout_  time.Duration
 	udpTimeout_  time.Duration
-	//udpNatMap_   	*udpNatMap
-	//udpOrigDstMap_	*udpOrigDstMap
-	//dnsNatMap_	 	*dnsNatMap
 	kcpBackend *KCPBackend
 }
 
@@ -61,11 +58,11 @@ func computeUDPKey(src *net.UDPAddr, dst *net.UDPAddr) string {
 	return fmt.Sprintf("%s->%s", src.String(), dst.String())
 }
 
-func CreateProxyBackend(config config.RemoteServerConfig, tcpTimeout int, udpTimeout int) (ret *proxyBackend, err error) {
+func CreateProxyBackend(config config.RemoteServerConfig) (ret *proxyBackend, err error) {
 
 	ret = &proxyBackend{}
-	ret.tcpTimeout_ = time.Second * time.Duration(tcpTimeout)
-	ret.udpTimeout_ = time.Second * time.Duration(udpTimeout)
+	ret.tcpTimeout_ = time.Second * time.Duration(config.TcpTimeout)
+	ret.udpTimeout_ = time.Second * time.Duration(config.UdpTimeout)
 
 	var isIPv6 bool
 	if isIPv6, err = network.CheckIPFamily(config.RemoteServer); err != nil {
@@ -97,6 +94,10 @@ func CreateProxyBackend(config config.RemoteServerConfig, tcpTimeout int, udpTim
 	}
 
 	return
+}
+
+func (c *proxyBackend) GetUDPTimeout() time.Duration{
+	return c.udpTimeout_
 }
 
 func (c *proxyBackend) Stop() {
@@ -292,7 +293,7 @@ func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEn
 	}
 	conn = c.cipher_.PacketConn(conn)
 
-	if entry, err = createUDPProxyEntry(conn, dstAddr, c.udpAddr); err != nil {
+	if entry, err = createUDPProxyEntry(conn, dstAddr, c.udpAddr, c.udpTimeout_); err != nil {
 		conn.Close()
 		err = errors.Wrap(err, "Create udp proxy entry failed")
 	}

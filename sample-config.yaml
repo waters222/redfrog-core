@@ -1,22 +1,11 @@
 packet-mask: "0x1/0x1"
+routing-table: 100
 listen-port: 9090
-addr: "192.168.0.1"
-gateway: "10.0.0.1"
-interface-in: "enp0s8"
-interface-out: "enp0s9"
-dhcp:
-  enable: true
-  start: "192.168.0.2"
-  end: "192.168.0.100"
-  static:
-      - mac: ""
-        ip: ""
-      - mac: ""
-        ip: ""
 ignore-ip:
   - "192.168.0.0/16"
   - "172.16.0.0/12"
   - "10.0.0.0/8"
+interface: "enp0s8"
 dns:
   listen-addr: "192.168.0.1:53"
   dns-timeout: 30
@@ -28,16 +17,16 @@ dns:
   cache:
     enable: true
     timeout: 30
+pac-list:
+  - "gfw-list.txt"
+  - "custom-list.txt"
 shadowsocks:
-  tcp-timeout: 120
-  udp-timeout: 30
-  pac-list:
-    - "gfw-list.txt"
-    - "custom-list.txt"
   servers:
     - remote-server: "65.49.196.94:20000"
       crypt: "AEAD_CHACHA20_POLY1305"
       Password: "123321A"
+      tcp-timeout: 120
+      udp-timeout: 30
       kcptun:
         enable: false
         server: "65.49.196.94:20010"
@@ -58,6 +47,8 @@ shadowsocks:
     - remote-server: "149.28.13.248:20001"
       crypt: "AEAD_CHACHA20_POLY1305"
       Password: "123321A"
+      tcp-timeout: 120
+      udp-timeout: 30
       kcptun:
         enable: false
         server: "149.28.13.248:20011"

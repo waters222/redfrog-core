@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/pkg/errors"
 	. "github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/dns_proxy"
 	"github.com/weishi258/redfrog-core/log"
@@ -12,7 +13,9 @@ import (
 	"go.uber.org/zap"
 	"math/rand"
 	"os"
+	"os/exec"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -80,6 +83,8 @@ func main() {
 		syscall.SIGTERM,
 		syscall.SIGINT)
 
+
+
 	go StartService(configFile)
 
 	runStatus := <-appRunStatus
@@ -108,9 +113,17 @@ func StartService(configFile string) {
 		logger.Info("Read config file successful", zap.String("file", configFile))
 	}
 
+	if err = addTProxyRoutingIPv4(config.PacketMask, strconv.Itoa(config.RoutingTable)); err != nil {
+		logger.Error("Add TProxy ipv4 route failed", zap.String("error", err.Error()))
+		return
+	}
+	if err = addTProxyRoutingIPv6(config.PacketMask, strconv.Itoa(config.RoutingTable)); err != nil {
+		logger.Error("Add TProxy ipv6 route failed", zap.String("error", err.Error()))
+		return
+	}
 	// init routing mgr
 	var routingMgr *routing.RoutingMgr
-	if routingMgr, err = routing.StartRoutingMgr(config.ListenPort, config.PacketMask, config.IgnoreIP); err != nil {
+	if routingMgr, err = routing.StartRoutingMgr(config.ListenPort, config.PacketMask, config.IgnoreIP, config.Interface); err != nil {
 		logger.Error("Init routing manager failed", zap.String("error", err.Error()))
 		return
 	}
@@ -122,7 +135,7 @@ func StartService(configFile string) {
 		logger.Error("Start pac list manager failed", zap.String("error", err.Error()))
 	}
 	defer pacListMgr.Stop()
-	pacListMgr.ReadPacList(config.Shadowsocks.PacList)
+	pacListMgr.ReadPacList(config.PacList)
 
 	var proxyClient *proxy_client.ProxyClient
 	if proxyClient, err = proxy_client.StartProxyClient(config.Shadowsocks, fmt.Sprintf("0.0.0.0:%d", config.ListenPort)); err != nil {
@@ -147,4 +160,72 @@ func StartService(configFile string) {
 	<-serviceStopSignal
 
 	logger.Info("RedFrog service is stopped")
+}
+
+
+
+func addTProxyRoutingIPv4(mark string, table string) (err error) {
+	cmd := exec.Command("ip", "rule", "list", "fwmark", mark, "lookup", table)
+	var response []byte
+	if response, err = cmd.Output(); err != nil {
+		err = errors.Wrap(err, "list ipv4 rule failed")
+		return
+	}
+	if len(response) == 0 {
+		// need to add new
+		cmd = exec.Command("ip", "rule", "add", "fwmark", mark, "lookup", table)
+		if err = cmd.Run(); err != nil {
+			err = errors.Wrap(err, "add ipv4 routing rule failed")
+			return
+		}
+	}
+
+	cmd = exec.Command("ip", "route", "list", "0.0.0.0/0", "dev", "lo", "table", table)
+	if response, err = cmd.Output(); err != nil {
+		err = errors.Wrap(err, "list ipv4 routing route failed")
+		return
+	}
+	if len(response) == 0 {
+		// need to add new
+		cmd = exec.Command("ip", "route", "replace", "local", "0.0.0.0/0", "dev", "lo", "table", table)
+		if err = cmd.Run(); err != nil {
+			err = errors.Wrap(err, "add ipv4 routing route failed")
+			return
+		}
+	}
+
+	return
+}
+
+func addTProxyRoutingIPv6(mark string, table string) (err error) {
+	cmd := exec.Command("ip", "-6", "rule", "list", "fwmark", mark, "lookup", table)
+	var response []byte
+	if response, err = cmd.Output(); err != nil {
+		err = errors.Wrap(err, "list ipv6 rule failed")
+		return
+	}
+	if len(response) == 0 {
+		// need to add new
+		cmd = exec.Command("ip", "-6","rule", "add", "fwmark", mark, "lookup", table)
+		if err = cmd.Run(); err != nil {
+			err = errors.Wrap(err, "add ipv6 routing rule failed")
+			return
+		}
+	}
+
+	cmd = exec.Command("ip", "-6","route", "list", "::/128", "dev", "lo", "table", table)
+	if response, err = cmd.Output(); err != nil {
+		err = errors.Wrap(err, "list ipv6 routing route failed")
+		return
+	}
+	if len(response) == 0 {
+		// need to add new
+		cmd = exec.Command("ip", "-6","route", "replace", "local", "::/128", "dev", "lo", "table", table)
+		if err = cmd.Run(); err != nil {
+			err = errors.Wrap(err, "add ipv6 routing route failed")
+			return
+		}
+	}
+
+	return
 }

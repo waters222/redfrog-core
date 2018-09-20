@@ -42,7 +42,7 @@ type RoutingMgr struct {
 	ignoreIPNet []*net.IPNet
 }
 
-func StartRoutingMgr(port int, mark string, ignoreIP []string) (ret *RoutingMgr, err error) {
+func StartRoutingMgr(port int, mark string, ignoreIP []string, interfaceName string) (ret *RoutingMgr, err error) {
 	logger := log.GetLogger()
 	ret = &RoutingMgr{}
 	if ignoreIP != nil {
@@ -69,7 +69,7 @@ func StartRoutingMgr(port int, mark string, ignoreIP []string) (ret *RoutingMgr,
 	if err = ret.createRedFrogChain(false); err != nil {
 		return
 	}
-	if err = ret.initPreRoutingChain(false); err != nil {
+	if err = ret.initPreRoutingChain(false, interfaceName); err != nil {
 		return
 	}
 	logger.Info("IPTables v4 successful created")
@@ -85,7 +85,7 @@ func StartRoutingMgr(port int, mark string, ignoreIP []string) (ret *RoutingMgr,
 	if err = ret.createRedFrogChain(true); err != nil {
 		return
 	}
-	if err = ret.initPreRoutingChain(true); err != nil {
+	if err = ret.initPreRoutingChain(true, interfaceName); err != nil {
 		return
 	}
 	logger.Info("IPTables v6 successful created")
@@ -119,7 +119,7 @@ func (c *RoutingMgr) createRedFrogChain(isIPv6 bool) (err error) {
 
 	return
 }
-func (c *RoutingMgr) initPreRoutingChain(isIPv6 bool) (err error) {
+func (c *RoutingMgr) initPreRoutingChain(isIPv6 bool, interfaceName string) (err error) {
 	handler := c.ip4tbl
 	if isIPv6 {
 		handler = c.ip6tbl
@@ -146,13 +146,19 @@ func (c *RoutingMgr) initPreRoutingChain(isIPv6 bool) (err error) {
 				}
 			}
 		}
-
+	}
+	if len(interfaceName) > 0 {
+		if err = handler.Append(TABLE_MANGLE, CHAIN_PREROUTING, "-i", interfaceName, "-j", CHAIN_RED_FROG); err != nil {
+			err = errors.Wrap(err, "Append into PREROUTING chain failed")
+			return
+		}
+	}else{
+		if err = handler.Append(TABLE_MANGLE, CHAIN_PREROUTING, "-j", CHAIN_RED_FROG); err != nil {
+			err = errors.Wrap(err, "Append into PREROUTING chain failed")
+			return
+		}
 	}
 
-	if err = handler.Append(TABLE_MANGLE, CHAIN_PREROUTING, "-j", CHAIN_RED_FROG); err != nil {
-		err = errors.Wrap(err, "Append into PREROUTING chain failed")
-		return
-	}
 
 	return
 }
