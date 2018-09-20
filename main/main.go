@@ -175,6 +175,16 @@ func StartService(configFile string) {
 			logger.Info("Read config file successful", zap.String("file", configFile))
 			pacListMgr.ReloadPacList(newConfig.PacList)
 
+			dnsServer.Reload(newConfig.Dns)
+
+			if err = proxyClient.ReloadBackend(newConfig.Shadowsocks); err != nil{
+				logger.Error("Reload backend failed", zap.String("error", err.Error()))
+			}else{
+				logger.Info("Reload backend successful")
+			}
+
+
+
 			//pacListMgr.ReadPacList()
 		case <-serviceStopSignal:
 			logger.Info("RedFrog service is stopped")

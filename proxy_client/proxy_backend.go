@@ -18,6 +18,7 @@ type proxyBackend struct {
 	cipher_ core.Cipher
 	tcpAddr net.TCPAddr
 	udpAddr *net.UDPAddr
+	remoteServerConfig config.RemoteServerConfig
 
 	networkType_ string
 	tcpTimeout_  time.Duration
@@ -58,15 +59,16 @@ func computeUDPKey(src *net.UDPAddr, dst *net.UDPAddr) string {
 	return fmt.Sprintf("%s->%s", src.String(), dst.String())
 }
 
-func CreateProxyBackend(config config.RemoteServerConfig) (ret *proxyBackend, err error) {
+func CreateProxyBackend(remoteServerConfig config.RemoteServerConfig) (ret *proxyBackend, err error) {
 
 	ret = &proxyBackend{}
-	ret.tcpTimeout_ = time.Second * time.Duration(config.TcpTimeout)
-	ret.udpTimeout_ = time.Second * time.Duration(config.UdpTimeout)
+	ret.remoteServerConfig = remoteServerConfig
+	ret.tcpTimeout_ = time.Second * time.Duration(remoteServerConfig.TcpTimeout)
+	ret.udpTimeout_ = time.Second * time.Duration(remoteServerConfig.UdpTimeout)
 
 	var isIPv6 bool
-	if isIPv6, err = network.CheckIPFamily(config.RemoteServer); err != nil {
-		err = errors.Wrap(err, fmt.Sprintf("Invalid IP format: %s", config.RemoteServer))
+	if isIPv6, err = network.CheckIPFamily(remoteServerConfig.RemoteServer); err != nil {
+		err = errors.Wrap(err, fmt.Sprintf("Invalid IP format: %s", remoteServerConfig.RemoteServer))
 		return
 	}
 	if isIPv6 {
@@ -74,7 +76,7 @@ func CreateProxyBackend(config config.RemoteServerConfig) (ret *proxyBackend, er
 	} else {
 		ret.networkType_ = "tcp4"
 	}
-	if ip, port, ee := network.ParseAddr(config.RemoteServer, isIPv6); ee != nil {
+	if ip, port, ee := network.ParseAddr(remoteServerConfig.RemoteServer, isIPv6); ee != nil {
 		err = errors.Wrap(ee, "Parse IPv4 failed")
 		return
 	} else {
@@ -82,13 +84,13 @@ func CreateProxyBackend(config config.RemoteServerConfig) (ret *proxyBackend, er
 		ret.udpAddr = &net.UDPAddr{IP: ip, Port: port}
 	}
 
-	if ret.cipher_, err = core.PickCipher(config.Crypt, []byte{}, config.Password); err != nil {
+	if ret.cipher_, err = core.PickCipher(remoteServerConfig.Crypt, []byte{}, remoteServerConfig.Password); err != nil {
 		err = errors.Wrap(err, "Generate cipher failed")
 		return
 	}
 
-	if config.Kcptun.Enable {
-		if ret.kcpBackend, err = StartKCPBackend(config.Kcptun, config.Crypt, config.Password); err != nil {
+	if remoteServerConfig.Kcptun.Enable {
+		if ret.kcpBackend, err = StartKCPBackend(remoteServerConfig.Kcptun, remoteServerConfig.Crypt, remoteServerConfig.Password); err != nil {
 			err = errors.Wrap(err, "Create KCP backend failed")
 		}
 	}

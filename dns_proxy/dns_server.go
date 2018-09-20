@@ -14,6 +14,7 @@ import (
 	"math/rand"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -35,12 +36,15 @@ type DnsServer struct {
 	remoteResolver []*dnsResolver
 
 	proxyClient *proxy_client.ProxyClient
-	dnsTimeout  time.Duration
+	dnsTimeout  int32
 
 	dnsResolverMux sync.RWMutex
 
+
+	sendNum   int32
 	dnsCaches *dnsCache
-	sendNum   int
+	dnsCacheMux sync.Mutex
+
 }
 
 type dnsCacheEntry struct {
@@ -49,33 +53,40 @@ type dnsCacheEntry struct {
 }
 
 type dnsCache struct {
-	sync.Mutex
 	caches  map[string]*dnsCacheEntry
 	timeout time.Duration
 }
 
-func (c *dnsCache) Add(domain string, response []byte) {
-	c.Lock()
-	defer c.Unlock()
-	c.caches[domain] = &dnsCacheEntry{response, time.Now().Add(c.timeout)}
+func (c *DnsServer) AddDnsCache(domain string, response []byte) {
+	c.dnsCacheMux.Lock()
+	defer c.dnsCacheMux.Unlock()
+	if c.dnsCaches != nil{
+		c.dnsCaches.caches[domain] = &dnsCacheEntry{response, time.Now().Add(c.dnsCaches.timeout)}
+	}
 }
 
-func (c *dnsCache) Del(domain string) {
-	c.Lock()
-	defer c.Unlock()
-	delete(c.caches, domain)
+func (c *DnsServer) DelDnsCache(domain string) {
+	c.dnsCacheMux.Lock()
+	defer c.dnsCacheMux.Unlock()
+	if c.dnsCaches != nil{
+		delete(c.dnsCaches.caches, domain)
+	}
+
 }
 
-func (c *dnsCache) Get(domain string) []byte {
-	c.Lock()
-	defer c.Unlock()
-	if res, ok := c.caches[domain]; ok {
-		if time.Now().Before(res.ttl) {
-			return res.response
-		} else {
-			delete(c.caches, domain)
+func (c *DnsServer) GetDnsCache(domain string) []byte {
+	c.dnsCacheMux.Lock()
+	defer c.dnsCacheMux.Unlock()
+	if c.dnsCaches != nil{
+		if res, ok := c.dnsCaches.caches[domain]; ok {
+			if time.Now().Before(res.ttl) {
+				return res.response
+			} else {
+				delete(c.dnsCaches.caches, domain)
+			}
 		}
 	}
+
 	return nil
 }
 
@@ -84,7 +95,7 @@ func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingM
 
 	ret = &DnsServer{}
 	ret.proxyClient = proxyClient
-	ret.dnsTimeout = time.Second * time.Duration(dnsConfig.DnsTimeout)
+	ret.dnsTimeout = int32(dnsConfig.DnsTimeout)
 	if routingMgr == nil {
 		return nil, errors.New("Routing manager is nil")
 	}
@@ -106,31 +117,105 @@ func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingM
 	// create dns exchange client
 	ret.localResolver = make([]*dnsResolver, 0)
 	for _, addr := range dnsConfig.LocalResolver {
+		var resolver *dnsResolver
 		if strings.Index(addr, ":") >= 0 {
-			ret.localResolver = append(ret.localResolver, &dnsResolver{addr, &dns.Client{Net: "udp"}})
+			resolver = &dnsResolver{addr, &dns.Client{Net: "udp"}}
 		} else {
-			ret.localResolver = append(ret.localResolver, &dnsResolver{fmt.Sprintf("%s:53", addr), &dns.Client{Net: "udp"}})
+			resolver = &dnsResolver{fmt.Sprintf("%s:53", addr), &dns.Client{Net: "udp"}}
 		}
+		ret.localResolver = append(ret.localResolver, resolver)
+		logger.Debug("DNS local resolver", zap.String("addr", resolver.addr))
 	}
 
 	ret.remoteResolver = make([]*dnsResolver, 0)
 	for _, addr := range dnsConfig.ProxyResolver {
+		var resolver *dnsResolver
 		if strings.Index(addr, ":") >= 0 {
-			ret.remoteResolver = append(ret.remoteResolver, &dnsResolver{addr, &dns.Client{Net: "udp"}})
+			resolver = &dnsResolver{addr, &dns.Client{Net: "udp"}}
 		} else {
-			ret.remoteResolver = append(ret.remoteResolver, &dnsResolver{fmt.Sprintf("%s:53", addr), &dns.Client{Net: "udp"}})
+			resolver = &dnsResolver{fmt.Sprintf("%s:53", addr), &dns.Client{Net: "udp"}}
 		}
+		ret.remoteResolver = append(ret.remoteResolver, resolver)
+		logger.Debug("DNS proxy resolver", zap.String("addr", resolver.addr))
 	}
 
 	if dnsConfig.Cache.Enable {
+		logger.Info("Using DNS cache", zap.Int("timeout", dnsConfig.Cache.Timeout))
 		ret.dnsCaches = &dnsCache{caches: make(map[string]*dnsCacheEntry), timeout: time.Duration(dnsConfig.Cache.Timeout) * time.Second}
 	}
-	ret.sendNum = dnsConfig.SendNum
+	ret.sendNum = int32(dnsConfig.SendNum)
 	if ret.sendNum < 1 {
 		ret.sendNum = 1
 	}
-
+	logger.Info("Set DNS send number", zap.Int("num", dnsConfig.SendNum))
 	return
+}
+func (c *DnsServer)Reload(dnsConfig config.DnsConfig){
+	logger := log.GetLogger()
+
+	// reload resolver
+
+	localResolver := make([]*dnsResolver, 0)
+	for _, addr := range dnsConfig.LocalResolver {
+		var resolver *dnsResolver
+		if strings.Index(addr, ":") >= 0 {
+			resolver = &dnsResolver{addr, &dns.Client{Net: "udp"}}
+		} else {
+			resolver = &dnsResolver{fmt.Sprintf("%s:53", addr), &dns.Client{Net: "udp"}}
+		}
+		localResolver = append(localResolver, resolver)
+		logger.Debug("DNS local resolver", zap.String("addr", resolver.addr))
+	}
+
+	remoteResolver := make([]*dnsResolver, 0)
+	for _, addr := range dnsConfig.ProxyResolver {
+		var resolver *dnsResolver
+		if strings.Index(addr, ":") >= 0 {
+			resolver = &dnsResolver{addr, &dns.Client{Net: "udp"}}
+		} else {
+			resolver = &dnsResolver{fmt.Sprintf("%s:53", addr), &dns.Client{Net: "udp"}}
+		}
+		remoteResolver = append(remoteResolver, resolver)
+		logger.Debug("DNS proxy resolver", zap.String("addr", resolver.addr))
+	}
+	c.dnsResolverMux.Lock()
+	defer c.dnsResolverMux.Unlock()
+	c.localResolver = localResolver
+	c.remoteResolver = remoteResolver
+
+
+	// reload timeout
+	atomic.StoreInt32(&c.dnsTimeout, int32(dnsConfig.DnsTimeout))
+
+	// reload DNS cache
+	c.dnsCacheMux.Lock()
+	defer c.dnsCacheMux.Unlock()
+
+	if dnsConfig.Cache.Enable{
+		if c.dnsCaches == nil{
+			logger.Info("Enable DNS cache")
+			c.dnsCaches = &dnsCache{caches: make(map[string]*dnsCacheEntry), timeout: time.Duration(dnsConfig.Cache.Timeout) * time.Second}
+		}else{
+			logger.Debug("Set DNS cache timeout", zap.Int("timeout", dnsConfig.Cache.Timeout))
+			c.dnsCaches.timeout = time.Duration(dnsConfig.Cache.Timeout) * time.Second
+		}
+	}else{
+		if c.dnsCaches != nil{
+			logger.Info("Disable DNS cache")
+			c.dnsCaches = nil
+		}
+
+	}
+
+	// reload Send Num
+	sendNum := dnsConfig.SendNum
+	if sendNum < 1{
+		sendNum = 1
+	}
+	atomic.StoreInt32(&c.sendNum, int32(sendNum))
+	logger.Info("Set DNS send number", zap.Int("num", sendNum))
+
+	logger.Info("Reload DNS config successful")
 }
 
 func (c *DnsServer) Stop() {
@@ -175,7 +260,7 @@ func (c *DnsServer) checkCache(r *dns.Msg) *dns.Msg {
 	if c.dnsCaches != nil {
 		for _, q := range r.Question {
 			if q.Qclass == dns.ClassINET {
-				if responseBytes := c.dnsCaches.Get(q.Name); responseBytes != nil {
+				if responseBytes := c.GetDnsCache(q.Name); responseBytes != nil {
 					resDns := new(dns.Msg)
 					if err := resDns.Unpack(responseBytes); err == nil {
 						resDns.Id = r.Id
@@ -221,7 +306,7 @@ func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 			logger.Error("Pack DNS query for proxy failed", zap.String("error", err.Error()))
 			return
 		}
-		responseBytes, err := c.proxyClient.ExchangeDNS(w.RemoteAddr().String(), resolver.addr, data, c.dnsTimeout, c.sendNum)
+		responseBytes, err := c.proxyClient.ExchangeDNS(w.RemoteAddr().String(), resolver.addr, data, time.Duration(atomic.LoadInt32(&c.dnsTimeout)) * time.Second, atomic.LoadInt32(&c.sendNum))
 		if err != nil {
 			logger.Error("DNS proxy resolve failed", zap.String("domain", domainName), zap.String("error", err.Error()))
 			return
@@ -253,7 +338,7 @@ func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 			}
 		}
 		if shouldAddCache && c.dnsCaches != nil {
-			c.dnsCaches.Add(domainName, responseBytes)
+			c.AddDnsCache(domainName, responseBytes)
 		}
 
 		w.WriteMsg(resDns)

@@ -16,6 +16,9 @@ import (
 
 type ProxyClient struct {
 	backends_   []*proxyBackend
+	backendMux sync.RWMutex
+
+
 	tcpListener net.Listener
 	udpListener *net.UDPConn
 
@@ -28,7 +31,7 @@ type ProxyClient struct {
 	udpNatMap_     *udpNatMap
 	dnsNatMap_     *dnsNatMap
 
-	backendMux sync.RWMutex
+
 }
 
 type dnsNatMap struct {
@@ -151,16 +154,9 @@ func StartProxyClient(config config.ShadowsocksConfig, listenAddr string) (*Prox
 
 	ret := &ProxyClient{}
 	ret.addr = listenAddr
-	ret.backends_ = make([]*proxyBackend, 0)
-	for _, backendConfig := range config.Servers {
-		if backend, err := CreateProxyBackend(backendConfig); err != nil {
-			logger.Error("Proxy backend create failed", zap.String("addr", backendConfig.RemoteServer))
-			err = errors.Wrap(err, "Create proxy backend failed")
-			return nil, err
-		} else {
-			logger.Info("Proxy backend create successful", zap.String("addr", backendConfig.RemoteServer))
-			ret.backends_ = append(ret.backends_, backend)
-		}
+
+	if err := ret.StartBackend(config); err != nil{
+		return nil, err
 	}
 
 	isIPv6, err := network.CheckIPFamily(listenAddr)
@@ -189,6 +185,89 @@ func StartProxyClient(config config.ShadowsocksConfig, listenAddr string) (*Prox
 
 	logger.Info("ProxyClient start successful", zap.String("addr", listenAddr))
 	return ret, nil
+}
+
+func (c *ProxyClient)StartBackend(serverConfig config.ShadowsocksConfig) (err error){
+	logger := log.GetLogger()
+	c.backendMux.Lock()
+	defer c.backendMux.Unlock()
+
+	c.backends_ = make([]*proxyBackend, 0)
+
+	for _, backendConfig := range serverConfig.Servers {
+		if backendConfig.Enable{
+			var backend *proxyBackend
+			if backend, err = CreateProxyBackend(backendConfig); err != nil {
+				logger.Error("Proxy backend create failed", zap.String("addr", backendConfig.RemoteServer))
+				err = errors.Wrap(err, "Create proxy backend failed")
+				return
+			} else {
+				c.backends_ = append(c.backends_, backend)
+				logger.Info("Proxy backend create successful", zap.String("addr", backendConfig.RemoteServer))
+			}
+		}
+	}
+
+	if len(c.backends_) == 0{
+		err = errors.New("No backend created !!!")
+	}
+	return
+}
+
+func (c *ProxyClient)ReloadBackend(serverConfig config.ShadowsocksConfig) (err error){
+	logger := log.GetLogger()
+	newBackends := make([]*proxyBackend, 0)
+
+	c.backendMux.Lock()
+	defer c.backendMux.Unlock()
+
+	for _, backend := range c.backends_{
+		shouldClosed := true
+		for _, backendConfig := range serverConfig.Servers {
+			if backend.remoteServerConfig.RemoteServer == backendConfig.RemoteServer{
+				// we have a match
+				if backend.remoteServerConfig.Equal(&backendConfig){
+					logger.Debug("Should not close backend", zap.String("server", backendConfig.RemoteServer))
+					shouldClosed = false
+				}
+				break
+			}
+		}
+		if shouldClosed{
+			logger.Debug("Closing backend", zap.String("server", backend.remoteServerConfig.RemoteServer))
+			backend.Stop()
+		}else{
+			newBackends = append(newBackends, backend)
+		}
+	}
+
+	for _, backendConfig := range serverConfig.Servers {
+		if backendConfig.Enable{
+			shouldStart := true
+			for _, backend := range newBackends{
+				if backendConfig.RemoteServer == backend.remoteServerConfig.RemoteServer{
+					shouldStart = false
+					break
+				}
+			}
+			if shouldStart{
+				if backend, err := CreateProxyBackend(backendConfig); err != nil {
+					logger.Error("Proxy backend create failed", zap.String("addr", backendConfig.RemoteServer))
+				} else {
+					newBackends = append(newBackends, backend)
+					logger.Info("Proxy backend create successful", zap.String("addr", backendConfig.RemoteServer))
+				}
+			}
+		}
+
+	}
+
+	c.backends_ = newBackends
+
+	if len(c.backends_) == 0{
+		err = errors.New("No backend created !!!")
+	}
+	return
 }
 
 func (c *ProxyClient) getBackendProxy() *proxyBackend {
@@ -452,7 +531,7 @@ func (c *ProxyClient) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, l
 	return nil
 }
 
-func (c *ProxyClient) ExchangeDNS(srcAddr string, dnsAddr string, data []byte, dnsTimeout time.Duration, times int) (response []byte, err error) {
+func (c *ProxyClient) ExchangeDNS(srcAddr string, dnsAddr string, data []byte, dnsTimeout time.Duration, times int32) (response []byte, err error) {
 	//logger := log.GetLogger()
 
 	addrBytes, err := network.ConvertShadowSocksAddr(dnsAddr)
@@ -491,7 +570,7 @@ func (c *ProxyClient) ExchangeDNS(srcAddr string, dnsAddr string, data []byte, d
 
 	// set timeout for each send
 	// write to remote shadowsocks server
-	for i := 0; i < times; i++ {
+	for i := int32(0); i < times; i++ {
 		if _, err = dnsEntry.conn.WriteTo(buffer.Bytes()[:totalLen], dnsEntry.proxyAddr); err != nil {
 			err = errors.Wrap(err, "Write to remote DNS failed")
 			return

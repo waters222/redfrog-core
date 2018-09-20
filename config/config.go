@@ -2,6 +2,8 @@ package config
 
 import (
 	"github.com/pkg/errors"
+	"github.com/weishi258/redfrog-core/log"
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
@@ -10,7 +12,6 @@ import (
 type KcptunConfig struct {
 	Enable            bool   `yaml:"enable"`
 	Server            string `yaml:"server"`
-	Crypt             string `yaml:"crypt"`
 	Mode              string `yaml:"mode"`
 	Conn              int    `yaml:"conn"`
 	AutoExpire        int    `yaml:"autoexpire"`
@@ -30,7 +31,6 @@ type KcptunConfig struct {
 	Resend            int    `yaml:"resend"`
 	NoCongestion      int    `yaml:"no-congestion"`
 	ScavengeTTL       int    `yaml:"scavenge-ttl"`
-
 	ListenAddr  string `yaml:"listen-addr"`
 	ThreadCount int    `yaml:"thread"`
 }
@@ -66,8 +66,39 @@ func (c *KcptunConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	*c = KcptunConfig(raw)
 	return nil
 }
+func (c *KcptunConfig)Equal(other *KcptunConfig) bool{
+	if c.Enable == other.Enable &&
+		c.Server == other.Server &&
+		c.Mode == other.Mode &&
+		c.Conn == other.Conn &&
+		c.AutoExpire == other.AutoExpire &&
+		c.Mtu == other.Mtu &&
+		c.Sndwnd == other.Sndwnd &&
+		c.Rcvwnd == other.Rcvwnd &&
+		c.Datashard == other.Datashard &&
+		c.Parityshard == other.Parityshard &&
+		c.Dscp == other.Dscp &&
+		c.Nocomp == other.Nocomp &&
+		c.Sockbuf == other.Sockbuf &&
+		c.KeepAliveTimeout == other.KeepAliveTimeout &&
+		c.KeepAliveInterval == other.KeepAliveInterval &&
+		c.Acknodelay == other.Acknodelay &&
+		c.Nodelay == other.Nodelay &&
+		c.Interval == other.Interval &&
+		c.Resend == other.Resend &&
+		c.NoCongestion == other.NoCongestion &&
+		c.ScavengeTTL == other.ScavengeTTL &&
+		c.ListenAddr == other.ListenAddr &&
+		c.ThreadCount == other.ThreadCount {
+			return true
+	}
+
+	return false
+}
+
 
 type RemoteServerConfig struct {
+	Enable		bool			`yaml:"enable"`
 	UdpTimeout   int          `yaml:"udp-timeout"`
 	TcpTimeout   int          `yaml:"tcp-timeout"`
 	RemoteServer string       `yaml:"remote-server"`
@@ -88,6 +119,18 @@ func (c *RemoteServerConfig) UnmarshalYAML(unmarshal func(interface{}) error) er
 	}
 	*c = RemoteServerConfig(raw)
 	return nil
+}
+func (c *RemoteServerConfig) Equal(other *RemoteServerConfig) bool{
+	if c.Enable == other.Enable &&
+		c.UdpTimeout == other.UdpTimeout &&
+		c.TcpTimeout == other.TcpTimeout &&
+		c.RemoteServer == other.RemoteServer &&
+		c.Crypt == other.Crypt &&
+		c.Password == other.Password &&
+		c.Kcptun.Equal(&other.Kcptun){
+			return true
+	}
+	return false
 }
 
 type ShadowsocksConfig struct {
@@ -166,6 +209,19 @@ func ParseClientConfig(path string) (ret Config, err error) {
 		err = errors.Wrapf(err, "Parse config file %s failed", path)
 		return
 	}
+
+	// make sure no duplicate shadowsocks server
+	shadowsocksServer := make(map[string]bool)
+	serversFiltered := make([]RemoteServerConfig, 0)
+	for _, serverConfig := range ret.Shadowsocks.Servers{
+		if _, ok := shadowsocksServer[serverConfig.RemoteServer]; !ok{
+			shadowsocksServer[serverConfig.RemoteServer] = true
+			serversFiltered = append(serversFiltered, serverConfig)
+		}else{
+			log.GetLogger().Warn("Found duplicate shadowsocks server", zap.Any("config", serverConfig))
+		}
+	}
+	ret.Shadowsocks.Servers = serversFiltered
 
 	return
 }

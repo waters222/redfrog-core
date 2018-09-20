@@ -22,13 +22,14 @@ pac-list:
   - "custom-list.txt"
 shadowsocks:
   servers:
-    - remote-server: "65.49.196.94:20000"
+    - enable: true
+      remote-server: "65.49.196.94:20000"
       crypt: "AEAD_CHACHA20_POLY1305"
       Password: "123321A"
       tcp-timeout: 120
       udp-timeout: 30
       kcptun:
-        enable: false
+        enable: true
         server: "65.49.196.94:20010"
         mode: "fast"
         thread: 4
@@ -44,13 +45,37 @@ shadowsocks:
         keep-alive-interval: 10
         keep-alive-timeout: 120
         sock-buf : 4194304
-    - remote-server: "149.28.13.248:20001"
+    - enable: true
+      remote-server: "149.28.13.248:20000"
       crypt: "AEAD_CHACHA20_POLY1305"
       Password: "123321A"
       tcp-timeout: 120
       udp-timeout: 30
       kcptun:
-        enable: false
+        enable: true
+        server: "149.28.13.248:20001"
+        mode: "fast"
+        thread: 4
+        conn: 4
+        autoexpire: 0
+        mtu: 1350
+        sndwnd: 128
+        rcvwnd: 512
+        datashard: -1
+        parityshard: -1
+        dscp: 0
+        nocomp: false
+        keep-alive-interval: 10
+        keep-alive-timeout: 120
+        sock-buf : 4194304
+    - enable: true
+      remote-server: "149.28.13.248:20001"
+      crypt: "AEAD_CHACHA20_POLY1305"
+      Password: "123321A"
+      tcp-timeout: 120
+      udp-timeout: 30
+      kcptun:
+        enable: true
         server: "149.28.13.248:20011"
         mode: "fast"
         thread: 4
@@ -66,3 +91,4 @@ shadowsocks:
         keep-alive-interval: 10
         keep-alive-timeout: 120
         sock-buf : 4194304
+
