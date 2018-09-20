@@ -68,45 +68,42 @@ func enableForward() (err error) {
 
 func enableRouting(interfaceIn string, interfaceOut string, isIPv6 bool) (err error) {
 	var iptble *iptables.IPTables
-	if !isIPv6{
-		if iptble, err = iptables.New(); err != nil{
+	if !isIPv6 {
+		if iptble, err = iptables.New(); err != nil {
 			return err
 		}
-	}else{
-		if iptble, err = iptables.NewWithProtocol(iptables.ProtocolIPv6); err != nil{
+	} else {
+		if iptble, err = iptables.NewWithProtocol(iptables.ProtocolIPv6); err != nil {
 			return err
 		}
 	}
 
-	if err = iptble.FlushChain(TABLE_FILTER, CHAIN_INPUT); err != nil{
+	if err = iptble.FlushChain(TABLE_FILTER, CHAIN_INPUT); err != nil {
 		return
 	}
-	if err = iptble.Append(TABLE_FILTER, CHAIN_INPUT, "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"); err != nil{
+	if err = iptble.Append(TABLE_FILTER, CHAIN_INPUT, "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"); err != nil {
 		return
 	}
-	if err = iptble.Append(TABLE_FILTER, CHAIN_INPUT, "-i", interfaceIn, "-p", "udp", "--dport", "53", "-j", "ACCEPT"); err != nil{
-		return
-	}
-
-	if err = iptble.FlushChain(TABLE_FILTER, CHAIN_FORWARD); err != nil{
-		return
-	}
-	if err = iptble.Append(TABLE_FILTER, CHAIN_FORWARD, "-i", interfaceIn, "-o", interfaceOut, "-j", "ACCEPT"); err != nil{
-		return
-	}
-	if err = iptble.Append(TABLE_FILTER, CHAIN_FORWARD, "-i", interfaceOut, "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"); err != nil{
+	if err = iptble.Append(TABLE_FILTER, CHAIN_INPUT, "-i", interfaceIn, "-p", "udp", "--dport", "53", "-j", "ACCEPT"); err != nil {
 		return
 	}
 
-
-	if err = iptble.FlushChain(TABlE_NAT, CHAIN_POSTROUTING); err != nil{
+	if err = iptble.FlushChain(TABLE_FILTER, CHAIN_FORWARD); err != nil {
 		return
 	}
-	if err = iptble.Append(TABlE_NAT, CHAIN_POSTROUTING,  "-o", interfaceOut, "-j", "MASQUERADE"); err != nil{
+	if err = iptble.Append(TABLE_FILTER, CHAIN_FORWARD, "-i", interfaceIn, "-o", interfaceOut, "-j", "ACCEPT"); err != nil {
+		return
+	}
+	if err = iptble.Append(TABLE_FILTER, CHAIN_FORWARD, "-i", interfaceOut, "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "ACCEPT"); err != nil {
 		return
 	}
 
+	if err = iptble.FlushChain(TABlE_NAT, CHAIN_POSTROUTING); err != nil {
+		return
+	}
+	if err = iptble.Append(TABlE_NAT, CHAIN_POSTROUTING, "-o", interfaceOut, "-j", "MASQUERADE"); err != nil {
+		return
+	}
 
 	return nil
 }
-

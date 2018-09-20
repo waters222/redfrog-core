@@ -152,13 +152,12 @@ func (c *RoutingMgr) initPreRoutingChain(isIPv6 bool, interfaceName string) (err
 			err = errors.Wrap(err, "Append into PREROUTING chain failed")
 			return
 		}
-	}else{
+	} else {
 		if err = handler.Append(TABLE_MANGLE, CHAIN_PREROUTING, "-j", CHAIN_RED_FROG); err != nil {
 			err = errors.Wrap(err, "Append into PREROUTING chain failed")
 			return
 		}
 	}
-
 
 	return
 }
@@ -198,20 +197,19 @@ func (c *RoutingMgr) serializeRoutingTable() (err error) {
 	// strip empty ip
 	ipListV4 := make(map[string][]net.IP)
 	ipListV6 := make(map[string][]net.IP)
-	for domain, ips := range c.ipListV4{
-		if ips != nil && len(ips) > 0{
+	for domain, ips := range c.ipListV4 {
+		if ips != nil && len(ips) > 0 {
 			// make sure its not ip addrs
-			if tempIP := net.ParseIP(domain); tempIP == nil{
+			if tempIP := net.ParseIP(domain); tempIP == nil {
 				ipListV4[domain] = ips
 			}
 		}
 
-
 	}
-	for domain, ips := range c.ipListV6{
-		if ips != nil && len(ips) > 0{
+	for domain, ips := range c.ipListV6 {
+		if ips != nil && len(ips) > 0 {
 			// make sure its not ip addrs
-			if tempIP := net.ParseIP(domain); tempIP == nil{
+			if tempIP := net.ParseIP(domain); tempIP == nil {
 				ipListV6[domain] = ips
 			}
 		}
@@ -336,44 +334,163 @@ func (c *RoutingMgr) PopulateRoutingTable() (err error) {
 	return
 }
 
-func (c *RoutingMgr) LoadPacList(domains map[string]bool, ips map[string]bool) {
+func (c *RoutingMgr) ReloadPacList(domains map[string]bool, ips map[string]bool, ipDeleteList []string) {
 	logger := log.GetLogger()
-
 	c.Lock()
-	ipv4tablesList := make([]string, 0)
-	ipv6tablesList := make([]string, 0)
-	for ipInput, bDomainListType := range ips {
-		if bDomainListType == common.DOMAIN_BLACK_LIST {
-			ip := net.ParseIP(ipInput)
-			if isIPv4 := ip.To4(); isIPv4 != nil {
-				c.ipListV4[ipInput] = []net.IP{ip}
-				ipv4tablesList = append(ipv4tablesList, ip.String())
-			} else {
-				c.ipListV6[ipInput] = []net.IP{ip}
-				ipv6tablesList = append(ipv6tablesList, ip.String())
-			}
+	ipv4tablesList := make(map[string]bool)
+	ipv6tablesList := make(map[string]bool)
 
+	// find out which ip need to be added
+	for ipInput := range ips {
+		ip := net.ParseIP(ipInput)
+		if isIPv4 := ip.To4(); isIPv4 != nil {
+			if _, ok := c.ipListV4[ipInput]; !ok {
+				c.ipListV4[ipInput] = []net.IP{ip}
+				ipv4tablesList[ip.String()] = true
+			}
+		} else {
+			if _, ok := c.ipListV6[ipInput]; !ok {
+				c.ipListV6[ipInput] = []net.IP{ip}
+				ipv6tablesList[ip.String()] = true
+			}
 		}
 	}
 
-	for domain, bDomainListType := range domains {
-		if bDomainListType == common.DOMAIN_BLACK_LIST {
-			c.ipListV4[domain] = []net.IP{}
-			c.ipListV6[domain] = []net.IP{}
+	ipv4tablesDeleteList := make(map[string]bool)
+	ipv6tablesDeleteList := make(map[string]bool)
+
+	// delete ip according to delete list
+	for _, ipInput := range ipDeleteList {
+		if ip := net.ParseIP(ipInput); ip.To4() != nil {
+			ipv4tablesDeleteList[ipInput] = true
+			delete(c.ipListV4, ipInput)
+		} else {
+			ipv6tablesDeleteList[ipInput] = true
+			delete(c.ipListV6, ipInput)
+		}
+	}
+
+	domainDeleteList := make([]string, 0)
+	for domain, ips := range c.ipListV4 {
+		// make sure its not ip address
+		if isIP := net.ParseIP(domain); isIP == nil {
+			keep := false
+			if stubs := common.GenerateDomainStubs(domain); stubs != nil && len(stubs) > 0 {
+				for _, stub := range stubs {
+					if _, ok := domains[stub]; ok {
+						keep = true
+						break
+					}
+				}
+			}
+			if !keep {
+				domainDeleteList = append(domainDeleteList, domain)
+				for _, ip := range ips {
+					ipv4tablesDeleteList[ip.String()] = true
+				}
+
+			}
+		}
+
+	}
+	for _, domain := range domainDeleteList {
+		delete(c.ipListV4, domain)
+	}
+
+	domainDeleteList = make([]string, 0)
+	for domain, ips := range c.ipListV6 {
+		if isIP := net.ParseIP(domain); isIP == nil {
+			keep := false
+			if stubs := common.GenerateDomainStubs(domain); stubs != nil && len(stubs) > 0 {
+				for _, stub := range stubs {
+					if _, ok := domains[stub]; ok {
+						keep = true
+						break
+					}
+				}
+			}
+			if !keep {
+				domainDeleteList = append(domainDeleteList, domain)
+				for _, ip := range ips {
+					ipv6tablesDeleteList[ip.String()] = true
+				}
+			}
+		}
+
+	}
+	for _, domain := range domainDeleteList {
+		delete(c.ipListV6, domain)
+	}
+
+	c.Unlock()
+
+	logger.Info("Reload pac list finished")
+
+	if len(ipv4tablesList) > 0 {
+		ips := composeIPList(ipv4tablesList)
+		if err := c.ip4tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ips, "-j", CHAIN_TPROXY); err != nil {
+			logger.Error("Routing table add IPv4 failed", zap.String("ips", ips), zap.String("error", err.Error()))
+		} else {
+			logger.Debug("Routing table add IPv4 successful", zap.String("ips", ips))
+		}
+	}
+	if len(ipv6tablesList) > 0 {
+		ips := composeIPList(ipv6tablesList)
+		if err := c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ips, "-j", CHAIN_TPROXY); err != nil {
+			logger.Error("Routing table add IPv6 failed", zap.String("ips", ips), zap.String("error", err.Error()))
+		} else {
+			logger.Debug("Routing table add IPv6 successful", zap.String("ips", ips))
+		}
+
+	}
+	if len(ipv4tablesDeleteList) > 0 {
+		ips := composeIPList(ipv4tablesDeleteList)
+		if err := c.ip4tbl.Delete(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ips, "-j", CHAIN_TPROXY); err != nil {
+			logger.Error("Routing table delete IPv4 failed", zap.String("ips", ips), zap.String("error", err.Error()))
+		} else {
+			logger.Debug("Routing table delete IPv4 successful", zap.String("ips", ips))
+		}
+	}
+
+	if len(ipv6tablesDeleteList) > 0 {
+		ips := composeIPList(ipv6tablesDeleteList)
+		if err := c.ip6tbl.Delete(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ips, "-j", CHAIN_TPROXY); err != nil {
+			logger.Error("Routing table delete IPv6 failed", zap.String("ips", ips), zap.String("error", err.Error()))
+		} else {
+			logger.Debug("Routing table delete IPv6 successful", zap.String("ips", ips))
+		}
+
+	}
+}
+
+func (c *RoutingMgr) LoadPacList(domains map[string]bool, ips map[string]bool) {
+
+	logger := log.GetLogger()
+	c.Lock()
+	ipv4tablesList := make(map[string]bool)
+	ipv6tablesList := make(map[string]bool)
+	for ipInput := range ips {
+		ip := net.ParseIP(ipInput)
+		if isIPv4 := ip.To4(); isIPv4 != nil {
+			c.ipListV4[ipInput] = []net.IP{ip}
+			ipv4tablesList[ip.String()] = true
+		} else {
+			c.ipListV6[ipInput] = []net.IP{ip}
+			ipv6tablesList[ip.String()] = true
 		}
 	}
 
 	if cache, err := c.deserializeRoutingTable(); err != nil {
 		logger.Error("Reading routing cache failed", zap.String("error", err.Error()))
 	} else {
-		for domain, ips := range cache.IPv4{
-			if ips != nil && len(ips) > 0{
-				if stubs := common.GenerateDomainStubs(domain); stubs != nil && len(stubs) > 0{
-					for _, stub := range stubs{
-						if entry, ok := c.ipListV4[stub]; ok {
+		for domain, ips := range cache.IPv4 {
+			if ips != nil && len(ips) > 0 {
+				if stubs := common.GenerateDomainStubs(domain); stubs != nil && len(stubs) > 0 {
+					for _, stub := range stubs {
+						if _, ok := domains[stub]; ok {
+							c.ipListV4[domain] = ips
 							for _, ip := range ips {
-								c.ipListV4[domain] = append(entry, ip)
-								ipv4tablesList = append(ipv4tablesList, ip.String())
+								ipv4tablesList[ip.String()] = true
 							}
 						}
 					}
@@ -381,14 +498,14 @@ func (c *RoutingMgr) LoadPacList(domains map[string]bool, ips map[string]bool) {
 				}
 			}
 		}
-		for domain, ips := range cache.IPv6{
-			if ips != nil && len(ips) > 0{
-				if stubs := common.GenerateDomainStubs(domain); stubs != nil && len(stubs) > 0{
-					for _, stub := range stubs{
-						if entry, ok := c.ipListV6[stub]; ok {
+		for domain, ips := range cache.IPv6 {
+			if ips != nil && len(ips) > 0 {
+				if stubs := common.GenerateDomainStubs(domain); stubs != nil && len(stubs) > 0 {
+					for _, stub := range stubs {
+						if _, ok := c.ipListV6[stub]; ok {
+							c.ipListV6[domain] = ips
 							for _, ip := range ips {
-								c.ipListV6[domain] = append(entry, ip)
-								ipv6tablesList = append(ipv6tablesList, ip.String())
+								ipv6tablesList[ip.String()] = true
 							}
 						}
 					}
@@ -403,27 +520,62 @@ func (c *RoutingMgr) LoadPacList(domains map[string]bool, ips map[string]bool) {
 	logger.Info("Load pac list finished")
 
 	if len(ipv4tablesList) > 0 {
-		ips := strings.Join(ipv4tablesList, ",")
+		ips := composeIPList(ipv4tablesList)
 		c.ip4tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ips, "-j", CHAIN_TPROXY)
 		logger.Debug("Routing table add ipv4", zap.String("ip", ips))
 	}
 	if len(ipv6tablesList) > 0 {
-		ips := strings.Join(ipv6tablesList, ",")
+		ips := composeIPList(ipv6tablesList)
 		c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ips, "-j", CHAIN_TPROXY)
 		logger.Debug("Routing table add ipv6", zap.String("ip", ips))
 	}
 
 }
+func composeIPList(ips map[string]bool) string {
+	temp := make([]string, 0)
+	for ip := range ips {
+		temp = append(temp, ip)
+	}
+	return strings.Join(temp, ",")
+}
 
 func (c *RoutingMgr) routingTableAddIPV4(ip net.IP) (err error) {
 	logger := log.GetLogger()
-	logger.Debug("routing table add ipv4", zap.String("ip", ip.String()))
-	c.ip4tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY)
+	if err = c.ip4tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
+		logger.Error("Routing table add IPv4 failed", zap.String("ip", ip.String()), zap.String("error", err.Error()))
+		return
+	}
+	logger.Debug("Routing table add IPv4 successful", zap.String("ip", ip.String()))
 	return
 }
 func (c *RoutingMgr) routingTableAddIPV6(ip net.IP) (err error) {
 	logger := log.GetLogger()
-	logger.Debug("routing table add ipv6", zap.String("ip", ip.String()))
-	c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY)
+	if err = c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
+		logger.Error("Routing table add IPv6 failed", zap.String("ip", ip.String()), zap.String("error", err.Error()))
+		return
+	}
+	logger.Debug("Routing table add IPv6 successful", zap.String("ip", ip.String()))
+	return
+}
+
+func (c *RoutingMgr) routingTableDelIPv4(ip net.IP) (err error) {
+	logger := log.GetLogger()
+
+	if err = c.ip4tbl.Delete(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
+		logger.Error("Routing table del IPv4 failed", zap.String("ip", ip.String()), zap.String("error", err.Error()))
+		return
+	}
+	logger.Debug("Routing table del IPv4 successful", zap.String("ip", ip.String()))
+	return
+}
+
+func (c *RoutingMgr) routingTableDelIPv6(ip net.IP) (err error) {
+	logger := log.GetLogger()
+
+	if err = c.ip6tbl.Delete(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
+		logger.Error("Routing table del IPv6 failed", zap.String("ip", ip.String()), zap.String("error", err.Error()))
+		return
+	}
+	logger.Debug("Routing table del IPv6 successful", zap.String("ip", ip.String()))
 	return
 }

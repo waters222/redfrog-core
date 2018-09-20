@@ -201,9 +201,10 @@ func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	isBlacked := false
 	var domainName string
 	for _, q := range r.Question {
-		if c.pacMgr.CheckDomain(q.Name) {
+		name := strings.TrimSuffix(q.Name, ".")
+		if c.pacMgr.CheckDomain(name) {
 			isBlacked = true
-			domainName = q.Name
+			domainName = name
 			break
 		}
 	}
@@ -236,12 +237,14 @@ func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 			if a.Header().Class == dns.ClassINET {
 				if a.Header().Rrtype == dns.TypeA {
 					shouldAddCache = true
-					c.routingMgr.AddIp(a.Header().Name, a.(*dns.A).A)
-					logger.Debug("ipv4 ip query", zap.String("domain", a.Header().Name), zap.String("ip", a.(*dns.A).A.String()))
+					name := strings.TrimSuffix(a.Header().Name, ".")
+					c.routingMgr.AddIp(name, a.(*dns.A).A)
+					logger.Debug("ipv4 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.A).A.String()))
 				} else if a.Header().Rrtype == dns.TypeAAAA {
 					shouldAddCache = true
-					c.routingMgr.AddIp(a.Header().Name, a.(*dns.AAAA).AAAA)
-					logger.Debug("ipv6 ip query", zap.String("domain", a.Header().Name), zap.String("ip", a.(*dns.AAAA).AAAA.String()))
+					name := strings.TrimSuffix(a.Header().Name, ".")
+					c.routingMgr.AddIp(name, a.(*dns.AAAA).AAAA)
+					logger.Debug("ipv6 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.AAAA).AAAA.String()))
 				} else if a.Header().Rrtype == dns.TypeCNAME {
 					cname := strings.TrimSuffix(a.(*dns.CNAME).Target, ".")
 					c.pacMgr.AddDomain(cname)

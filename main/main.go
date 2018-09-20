@@ -83,18 +83,18 @@ func main() {
 		syscall.SIGTERM,
 		syscall.SIGINT)
 
-
-
 	go StartService(configFile)
 
 	runStatus := <-appRunStatus
 	if !runStatus {
 		os.Exit(1)
 	}
+
 	sig := <-sigChan
+	logger.Info("RefFrog caught signal for exit", zap.Any("signal", sig))
 	serviceStopSignal <- true
 	<-appRunStatus
-	logger.Info("RefFrog caught signal for exit", zap.Any("signal", sig))
+	return
 
 }
 func StartService(configFile string) {
@@ -157,12 +157,32 @@ func StartService(configFile string) {
 	logger.Info("RefFrog service is up and running")
 
 	appRunStatus <- true
-	<-serviceStopSignal
 
-	logger.Info("RedFrog service is stopped")
+	// reading reload signal
+	reloadSignal := make(chan os.Signal, 1)
+	signal.Notify(reloadSignal,
+		syscall.SIGHUP)
+	for {
+		select {
+		case <-reloadSignal:
+			logger.Info("Reload configs")
+
+			var newConfig Config
+			if newConfig, err = ParseClientConfig(configFile); err != nil {
+				logger.Error("Read config file failed", zap.String("file", configFile), zap.String("error", err.Error()))
+				continue
+			}
+			logger.Info("Read config file successful", zap.String("file", configFile))
+			pacListMgr.ReloadPacList(newConfig.PacList)
+
+			//pacListMgr.ReadPacList()
+		case <-serviceStopSignal:
+			logger.Info("RedFrog service is stopped")
+			return
+		}
+	}
+
 }
-
-
 
 func addTProxyRoutingIPv4(mark string, table string) (err error) {
 	cmd := exec.Command("ip", "rule", "list", "fwmark", mark, "lookup", table)
@@ -206,21 +226,21 @@ func addTProxyRoutingIPv6(mark string, table string) (err error) {
 	}
 	if len(response) == 0 {
 		// need to add new
-		cmd = exec.Command("ip", "-6","rule", "add", "fwmark", mark, "lookup", table)
+		cmd = exec.Command("ip", "-6", "rule", "add", "fwmark", mark, "lookup", table)
 		if err = cmd.Run(); err != nil {
 			err = errors.Wrap(err, "add ipv6 routing rule failed")
 			return
 		}
 	}
 
-	cmd = exec.Command("ip", "-6","route", "list", "::/128", "dev", "lo", "table", table)
+	cmd = exec.Command("ip", "-6", "route", "list", "::/128", "dev", "lo", "table", table)
 	if response, err = cmd.Output(); err != nil {
 		err = errors.Wrap(err, "list ipv6 routing route failed")
 		return
 	}
 	if len(response) == 0 {
 		// need to add new
-		cmd = exec.Command("ip", "-6","route", "replace", "local", "::/128", "dev", "lo", "table", table)
+		cmd = exec.Command("ip", "-6", "route", "replace", "local", "::/128", "dev", "lo", "table", table)
 		if err = cmd.Run(); err != nil {
 			err = errors.Wrap(err, "add ipv6 routing route failed")
 			return

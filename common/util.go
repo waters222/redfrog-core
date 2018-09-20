@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func GenerateDomainStubs(domain string) []string{
+func GenerateDomainStubs(domain string) []string {
 	if len(domain) == 0 {
 		return nil
 	}

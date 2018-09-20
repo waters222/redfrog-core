@@ -1,8 +1,8 @@
 package common
 
 const (
-	DOMAIN_WHITE_LIST = false
-	DOMAIN_BLACK_LIST = true
+//DOMAIN_WHITE_LIST = false
+//DOMAIN_BLACK_LIST = true
 )
 const (
 	UDP_BUFFER_POOL_SIZE = 1024

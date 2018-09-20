@@ -369,7 +369,7 @@ func GetInterface() (entries []InterfaceEntry, err error) {
 				var addrs []net.Addr
 				if addrs, err = entry.Addrs(); err == nil && len(addrs) > 0 {
 					addresses := make([]string, len(addrs))
-					for i, addr := range addrs{
+					for i, addr := range addrs {
 						addresses[i] = addr.String()
 					}
 					entries = append(entries, InterfaceEntry{entry.Name, addresses})

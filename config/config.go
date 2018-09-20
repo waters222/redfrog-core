@@ -68,8 +68,8 @@ func (c *KcptunConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 type RemoteServerConfig struct {
-	UdpTimeout int                  `yaml:"udp-timeout"`
-	TcpTimeout int                  `yaml:"tcp-timeout"`
+	UdpTimeout   int          `yaml:"udp-timeout"`
+	TcpTimeout   int          `yaml:"tcp-timeout"`
 	RemoteServer string       `yaml:"remote-server"`
 	Crypt        string       `yaml:"crypt"`
 	Password     string       `yaml:"password"`
@@ -91,7 +91,7 @@ func (c *RemoteServerConfig) UnmarshalYAML(unmarshal func(interface{}) error) er
 }
 
 type ShadowsocksConfig struct {
-	Servers    []RemoteServerConfig `yaml:"servers"`
+	Servers []RemoteServerConfig `yaml:"servers"`
 }
 
 type DnsCacheConfig struct {
@@ -122,22 +122,22 @@ func (c *DnsConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 type Config struct {
-	Dns            DnsConfig         `yaml:"dns"`
-	Shadowsocks    ShadowsocksConfig `yaml:"shadowsocks"`
-	PacketMask     string            `yaml:"packet-mask"`
-	ListenPort     int               `yaml:"listen-port"`
-	IgnoreIP       []string          `yaml:"ignore-ip"`
-	Interface	   string			  `yaml:"interface"`
-	PacList    []string             `yaml:"pac-list"`
-	RoutingTable    int             `yaml:"routing-table"`
+	Dns          DnsConfig         `yaml:"dns"`
+	Shadowsocks  ShadowsocksConfig `yaml:"shadowsocks"`
+	PacketMask   string            `yaml:"packet-mask"`
+	ListenPort   int               `yaml:"listen-port"`
+	IgnoreIP     []string          `yaml:"ignore-ip"`
+	Interface    string            `yaml:"interface"`
+	PacList      []string          `yaml:"pac-list"`
+	RoutingTable int               `yaml:"routing-table"`
 }
 
 func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type rawConfig Config
 	raw := rawConfig{
-		PacketMask: "0x1/0x1",
+		PacketMask:   "0x1/0x1",
 		RoutingTable: 100,
-		IgnoreIP: []string{"192.168.0.0/16", "172.16.0.0/12", "10.0.0.0/8"},
+		IgnoreIP:     []string{"192.168.0.0/16", "172.16.0.0/12", "10.0.0.0/8"},
 	}
 
 	if err := unmarshal(&raw); err != nil {

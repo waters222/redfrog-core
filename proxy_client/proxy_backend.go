@@ -22,7 +22,7 @@ type proxyBackend struct {
 	networkType_ string
 	tcpTimeout_  time.Duration
 	udpTimeout_  time.Duration
-	kcpBackend *KCPBackend
+	kcpBackend   *KCPBackend
 }
 
 const (
@@ -96,7 +96,7 @@ func CreateProxyBackend(config config.RemoteServerConfig) (ret *proxyBackend, er
 	return
 }
 
-func (c *proxyBackend) GetUDPTimeout() time.Duration{
+func (c *proxyBackend) GetUDPTimeout() time.Duration {
 	return c.udpTimeout_
 }
 

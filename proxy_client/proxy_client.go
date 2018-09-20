@@ -78,7 +78,7 @@ type udpProxyEntry struct {
 	dst_      net.PacketConn
 	header_   []byte
 	proxyAddr *net.UDPAddr
-	timeout		time.Duration
+	timeout   time.Duration
 }
 
 func createUDPProxyEntry(dst net.PacketConn, dstAddr *net.UDPAddr, proxyAddr *net.UDPAddr, timeout time.Duration) (*udpProxyEntry, error) {
@@ -176,7 +176,6 @@ func StartProxyClient(config config.ShadowsocksConfig, listenAddr string) (*Prox
 
 	ret.udpBuffer_ = common.NewLeakyBuffer(common.UDP_BUFFER_POOL_SIZE, common.UDP_BUFFER_SIZE)
 	ret.udpOOBBuffer_ = common.NewLeakyBuffer(common.UDP_OOB_POOL_SIZE, common.UDP_OOB_BUFFER_SIZE)
-
 
 	if ret.udpListener, err = network.ListenTransparentUDP(listenAddr, isIPv6); err != nil {
 		ret.tcpListener.Close()
