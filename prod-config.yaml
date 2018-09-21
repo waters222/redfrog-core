@@ -1,30 +1,32 @@
 packet-mask: "0x1/0x1"
+routing-table: 100
 listen-port: 9090
 ignore-ip:
   - "192.168.0.0/16"
   - "172.16.0.0/12"
   - "10.0.0.0/8"
+interface:
+  - "enp1s0"
 dns:
   listen-addr: "10.0.0.99:53"
-  dns-timeout: 30
+  dns-timeout: 10
   local-resolver:
     - "114.114.114.114"
   proxy-resolver:
     - "8.8.8.8"
   send-num: 2
-  cache:
-    enable: true
-    timeout: 30
+  cache: true
+pac-list:
+  - "gfw-list.txt"
+  - "custom-list.txt"
 shadowsocks:
-  tcp-timeout: 120
-  udp-timeout: 30
-  pac-list:
-    - "gfw-list.txt"
-    - "custom-list.txt"
   servers:
-    - remote-server: "65.49.196.94:20000"
+    - enable: true
+      remote-server: "65.49.196.94:20000"
       crypt: "AEAD_CHACHA20_POLY1305"
       Password: "123321A"
+      tcp-timeout: 120
+      udp-timeout: 30
       kcptun:
         enable: true
         server: "65.49.196.94:20010"
@@ -42,9 +44,12 @@ shadowsocks:
         keep-alive-interval: 10
         keep-alive-timeout: 120
         sock-buf : 4194304
-    - remote-server: "149.28.13.248:20000"
+    - enable: true
+      remote-server: "149.28.13.248:20000"
       crypt: "AEAD_CHACHA20_POLY1305"
       Password: "123321A"
+      tcp-timeout: 120
+      udp-timeout: 30
       kcptun:
         enable: true
         server: "149.28.13.248:20010"
@@ -62,3 +67,4 @@ shadowsocks:
         keep-alive-interval: 10
         keep-alive-timeout: 120
         sock-buf : 4194304
+

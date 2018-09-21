@@ -35,12 +35,7 @@ sudo iptables -t nat --flush POSTROUTING
 sudo iptables -t nat -A POSTROUTING -o $INTERFACE_OUT   -j MASQUERADE
 
 
-sudo ip rule del fwmark 0x1/0x1 lookup 100
-sudo ip rule list fwmark 0x1/0x1 lookup 100
 sudo ip rule add fwmark 0x1/0x1 lookup 100
-
-sudo ip route del local 0.0.0.0/0 dev lo table 100
-sudo ip route replace local 0.0.0.0/0 dev lo table 100
 sudo ip route list 0.0.0.0/0 dev lo table 100
 
 
@@ -57,10 +52,8 @@ sudo ip6tables -t filter -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -
 sudo ip6tables -t nat --flush POSTROUTING
 sudo ip6tables -t nat -A POSTROUTING -o $INTERFACE_OUT   -j MASQUERADE
 
-sudo ip -6 rule del fwmark 0x1/0x1 lookup 100
 sudo ip -6 rule add fwmark 0x1/0x1 lookup 100
 
-sudo ip -6 route del local ::/128 dev lo table 100
 sudo ip -6 route add local ::/128 dev lo table 100
 
 NAT_SCRIPT

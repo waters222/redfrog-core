@@ -54,14 +54,13 @@ type dnsCacheEntry struct {
 
 type dnsCache struct {
 	caches  map[string]*dnsCacheEntry
-	timeout time.Duration
 }
 
-func (c *DnsServer) AddDnsCache(domain string, response []byte) {
+func (c *DnsServer) AddDnsCache(domain string, response []byte, ttl uint32) {
 	c.dnsCacheMux.Lock()
 	defer c.dnsCacheMux.Unlock()
 	if c.dnsCaches != nil{
-		c.dnsCaches.caches[domain] = &dnsCacheEntry{response, time.Now().Add(c.dnsCaches.timeout)}
+		c.dnsCaches.caches[domain] = &dnsCacheEntry{response, time.Now().Add(time.Duration(ttl) * time.Second)}
 	}
 }
 
@@ -139,9 +138,9 @@ func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingM
 		logger.Debug("DNS proxy resolver", zap.String("addr", resolver.addr))
 	}
 
-	if dnsConfig.Cache.Enable {
-		logger.Info("Using DNS cache", zap.Int("timeout", dnsConfig.Cache.Timeout))
-		ret.dnsCaches = &dnsCache{caches: make(map[string]*dnsCacheEntry), timeout: time.Duration(dnsConfig.Cache.Timeout) * time.Second}
+	if dnsConfig.Cache {
+		logger.Info("Enable DNS cache")
+		ret.dnsCaches = &dnsCache{caches: make(map[string]*dnsCacheEntry)}
 	}
 	ret.sendNum = int32(dnsConfig.SendNum)
 	if ret.sendNum < 1 {
@@ -191,13 +190,10 @@ func (c *DnsServer)Reload(dnsConfig config.DnsConfig){
 	c.dnsCacheMux.Lock()
 	defer c.dnsCacheMux.Unlock()
 
-	if dnsConfig.Cache.Enable{
+	if dnsConfig.Cache{
 		if c.dnsCaches == nil{
 			logger.Info("Enable DNS cache")
-			c.dnsCaches = &dnsCache{caches: make(map[string]*dnsCacheEntry), timeout: time.Duration(dnsConfig.Cache.Timeout) * time.Second}
-		}else{
-			logger.Debug("Set DNS cache timeout", zap.Int("timeout", dnsConfig.Cache.Timeout))
-			c.dnsCaches.timeout = time.Duration(dnsConfig.Cache.Timeout) * time.Second
+			c.dnsCaches = &dnsCache{caches: make(map[string]*dnsCacheEntry)}
 		}
 	}else{
 		if c.dnsCaches != nil{
@@ -318,6 +314,7 @@ func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 		}
 
 		shouldAddCache := false
+		var ttl uint32
 		for _, a := range resDns.Answer {
 			if a.Header().Class == dns.ClassINET {
 				if a.Header().Rrtype == dns.TypeA {
@@ -335,10 +332,13 @@ func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 					c.pacMgr.AddDomain(cname)
 					logger.Debug("Add CNAME to list", zap.String("CNAME", cname))
 				}
+				if a.Header().Ttl > ttl{
+					ttl = a.Header().Ttl
+				}
 			}
 		}
 		if shouldAddCache && c.dnsCaches != nil {
-			c.AddDnsCache(domainName, responseBytes)
+			c.AddDnsCache(domainName, responseBytes, ttl)
 		}
 
 		w.WriteMsg(resDns)

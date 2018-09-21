@@ -137,10 +137,6 @@ type ShadowsocksConfig struct {
 	Servers []RemoteServerConfig `yaml:"servers"`
 }
 
-type DnsCacheConfig struct {
-	Enable  bool `yaml:"enable"`
-	Timeout int  `yaml:"timeout"`
-}
 
 type DnsConfig struct {
 	ListenAddr    string         `yaml:"listen-addr"`
@@ -148,7 +144,7 @@ type DnsConfig struct {
 	ProxyResolver []string       `yaml:"proxy-resolver"`
 	DnsTimeout    int            `yaml:"dns-timeout"`
 	SendNum       int            `yaml:"send-num"`
-	Cache         DnsCacheConfig `yaml:"cache"`
+	Cache         bool 				`yaml:"cache"`
 }
 
 func (c *DnsConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {

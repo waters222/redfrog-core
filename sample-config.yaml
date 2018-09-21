@@ -5,19 +5,16 @@ ignore-ip:
   - "192.168.0.0/16"
   - "172.16.0.0/12"
   - "10.0.0.0/8"
-interface:
-  - "enp0s8"
+
 dns:
   listen-addr: "192.168.0.1:53"
-  dns-timeout: 30
+  dns-timeout: 10
   local-resolver:
     - "114.114.114.114"
   proxy-resolver:
     - "8.8.8.8"
   send-num: 2
-  cache:
-    enable: true
-    timeout: 30
+  cache: true
 pac-list:
   - "gfw-list.txt"
   - "custom-list.txt"
