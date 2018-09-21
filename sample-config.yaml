@@ -5,7 +5,8 @@ ignore-ip:
   - "192.168.0.0/16"
   - "172.16.0.0/12"
   - "10.0.0.0/8"
-interface: "enp0s8"
+interface:
+  - "enp0s8"
 dns:
   listen-addr: "192.168.0.1:53"
   dns-timeout: 30
@@ -54,29 +55,6 @@ shadowsocks:
       kcptun:
         enable: true
         server: "149.28.13.248:20001"
-        mode: "fast"
-        thread: 4
-        conn: 4
-        autoexpire: 0
-        mtu: 1350
-        sndwnd: 128
-        rcvwnd: 512
-        datashard: -1
-        parityshard: -1
-        dscp: 0
-        nocomp: false
-        keep-alive-interval: 10
-        keep-alive-timeout: 120
-        sock-buf : 4194304
-    - enable: true
-      remote-server: "149.28.13.248:20001"
-      crypt: "AEAD_CHACHA20_POLY1305"
-      Password: "123321A"
-      tcp-timeout: 120
-      udp-timeout: 30
-      kcptun:
-        enable: true
-        server: "149.28.13.248:20011"
         mode: "fast"
         thread: 4
         conn: 4

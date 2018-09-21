@@ -42,7 +42,7 @@ type RoutingMgr struct {
 	ignoreIPNet []*net.IPNet
 }
 
-func StartRoutingMgr(port int, mark string, ignoreIP []string, interfaceName string) (ret *RoutingMgr, err error) {
+func StartRoutingMgr(port int, mark string, ignoreIP []string, interfaceName[] string) (ret *RoutingMgr, err error) {
 	logger := log.GetLogger()
 	ret = &RoutingMgr{}
 	if ignoreIP != nil {
@@ -117,42 +117,73 @@ func (c *RoutingMgr) createRedFrogChain(isIPv6 bool) (err error) {
 		err = errors.Wrap(err, fmt.Sprintf("Create/Flush %s chain failed", CHAIN_RED_FROG))
 	}
 
-	return
-}
-func (c *RoutingMgr) initPreRoutingChain(isIPv6 bool, interfaceName string) (err error) {
-	handler := c.ip4tbl
-	if isIPv6 {
-		handler = c.ip6tbl
-	}
-
-	if err = handler.FlushChain(TABLE_MANGLE, CHAIN_PREROUTING); err != nil {
-		err = errors.Wrapf(err, "Flush chain %s -> %s failed", TABLE_MANGLE, CHAIN_PREROUTING)
-		return
-	}
-
 	for _, ipNet := range c.ignoreIPNet {
 		if isIPv6 {
 			if ipNet.IP.To4() == nil {
-				if err = handler.Append(TABLE_MANGLE, CHAIN_PREROUTING, "-d", ipNet.String(), "-j", "RETURN"); err != nil {
+				if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ipNet.String(), "-j", "RETURN"); err != nil {
 					err = errors.Wrap(err, "Append into PREROUTING chain failed")
 					return
 				}
 			}
 		} else {
 			if ipNet.IP.To4() != nil {
-				if err = handler.Append(TABLE_MANGLE, CHAIN_PREROUTING, "-d", ipNet.String(), "-j", "RETURN"); err != nil {
+				if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ipNet.String(), "-j", "RETURN"); err != nil {
 					err = errors.Wrap(err, "Append into PREROUTING chain failed")
 					return
 				}
 			}
 		}
 	}
-	if len(interfaceName) > 0 {
-		if err = handler.Append(TABLE_MANGLE, CHAIN_PREROUTING, "-i", interfaceName, "-j", CHAIN_RED_FROG); err != nil {
-			err = errors.Wrap(err, "Append into PREROUTING chain failed")
-			return
+
+	return
+}
+
+
+func (c *RoutingMgr) deletePrerouting(iptbl *iptables.IPTables) error{
+	if rules, err := iptbl.List(TABLE_MANGLE, CHAIN_PREROUTING); err != nil{
+		err = errors.Wrapf(err, "List chain %s -> %s failed", TABLE_MANGLE, CHAIN_PREROUTING)
+		return err
+	}else{
+		for _, rule := range rules{
+			stubs := strings.Split(rule, " ")
+			length := len(stubs)
+			if length > 4{
+				if stubs[length - 1] == CHAIN_RED_FROG && stubs[length - 2] == "-j"{
+					if err = iptbl.Delete(TABLE_MANGLE, CHAIN_PREROUTING, stubs[2:]...); err != nil{
+						err = errors.Wrapf(err, "Delete rule from chain %s -> %s: %v failed", TABLE_MANGLE, CHAIN_PREROUTING, stubs[2:])
+						return err
+					}
+				}
+			}
 		}
-	} else {
+	}
+
+	return nil
+}
+func (c *RoutingMgr) initPreRoutingChain(isIPv6 bool, interfaceName[] string) (err error) {
+	handler := c.ip4tbl
+	if isIPv6 {
+		handler = c.ip6tbl
+	}
+
+	if err = c.deletePrerouting(handler); err != nil{
+		return
+	}
+
+	interfaceAdded := false
+	if len(interfaceName) > 0 {
+		for _, name := range interfaceName{
+			if len(name) > 0{
+				if err = handler.Append(TABLE_MANGLE, CHAIN_PREROUTING, "-i", name, "-j", CHAIN_RED_FROG); err != nil {
+					err = errors.Wrap(err, "Append into PREROUTING chain failed")
+					return
+				}else{
+					interfaceAdded = true
+				}
+			}
+		}
+	}
+	if !interfaceAdded{
 		if err = handler.Append(TABLE_MANGLE, CHAIN_PREROUTING, "-j", CHAIN_RED_FROG); err != nil {
 			err = errors.Wrap(err, "Append into PREROUTING chain failed")
 			return
@@ -165,15 +196,20 @@ func (c *RoutingMgr) initPreRoutingChain(isIPv6 bool, interfaceName string) (err
 func (c *RoutingMgr) clearIPTables(iptbl *iptables.IPTables) {
 	logger := log.GetLogger()
 
-	if err := iptbl.FlushChain(TABLE_MANGLE, CHAIN_PREROUTING); err != nil {
-		logger.Error("Flush chain failed", zap.String("table", TABLE_MANGLE), zap.String("chain", CHAIN_PREROUTING), zap.String("error", err.Error()))
+	if err := c.deletePrerouting(iptbl); err != nil{
+		logger.Error("Delete rule from chain failed", zap.String("table", TABLE_MANGLE), zap.String("chain", CHAIN_PREROUTING), zap.String("error", err.Error()))
 	}
+
 
 	if err := iptbl.FlushChain(TABLE_MANGLE, CHAIN_RED_FROG); err != nil {
 		logger.Error("Flush chain failed", zap.String("chain", CHAIN_RED_FROG), zap.String("error", err.Error()))
+	}else if err = iptbl.DeleteChain(TABLE_MANGLE, CHAIN_RED_FROG); err != nil{
+		logger.Error("Delete chain failed", zap.String("table", TABLE_MANGLE), zap.String("chain", CHAIN_RED_FROG), zap.String("error", err.Error()))
 	}
 	if err := iptbl.FlushChain(TABLE_MANGLE, CHAIN_TPROXY); err != nil {
 		logger.Error("Flush chain failed", zap.String("chain", CHAIN_TPROXY), zap.String("error", err.Error()))
+	}else if err = iptbl.DeleteChain(TABLE_MANGLE, CHAIN_TPROXY); err != nil{
+		logger.Error("Delete chain failed", zap.String("table", TABLE_MANGLE), zap.String("chain", CHAIN_TPROXY), zap.String("error", err.Error()))
 	}
 }
 

@@ -170,7 +170,7 @@ type Config struct {
 	PacketMask   string            `yaml:"packet-mask"`
 	ListenPort   int               `yaml:"listen-port"`
 	IgnoreIP     []string          `yaml:"ignore-ip"`
-	Interface    string            `yaml:"interface"`
+	Interface    []string           `yaml:"interface"`
 	PacList      []string          `yaml:"pac-list"`
 	RoutingTable int               `yaml:"routing-table"`
 }
