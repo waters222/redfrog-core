@@ -273,18 +273,18 @@ func (c *proxyBackend) RelayTCPData(src net.Conn) (inboundSize int64, outboundSi
 //	//dstChannel <- dstMapChannel{srcAddr, payload}
 //}*/
 
-func (c *proxyBackend) GetDNSRelayEntry() (entry *dnsNapMapEntry, err error) {
-	var conn net.PacketConn
-	conn, err = net.ListenPacket("udp", "")
-	if err != nil {
-		err = errors.Wrap(err, "UDP proxy listen local failed")
-		return
-	}
-	conn = c.cipher_.PacketConn(conn)
-	entry = createDNSProxyEntry(conn, c.udpAddr)
-	return
-
-}
+//func (c *proxyBackend) GetDNSRelayEntry() (entry *dnsNapMapEntry, err error) {
+//	var conn net.PacketConn
+//	conn, err = net.ListenPacket("udp", "")
+//	if err != nil {
+//		err = errors.Wrap(err, "UDP proxy listen local failed")
+//		return
+//	}
+//	conn = c.cipher_.PacketConn(conn)
+//	entry = createDNSProxyEntry(conn, c.udpAddr)
+//	return
+//
+//}
 
 func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEntry, err error) {
 	var conn net.PacketConn

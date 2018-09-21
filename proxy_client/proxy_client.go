@@ -29,47 +29,48 @@ type ProxyClient struct {
 	//udpTimeout_    time.Duration
 	udpOrigDstMap_ *udpOrigDstMap
 	udpNatMap_     *udpNatMap
-	dnsNatMap_     *dnsNatMap
+	//dnsNatMap_     *dnsNatMap
 
 
 }
 
-type dnsNatMap struct {
-	sync.RWMutex
-	entries map[string]*dnsNapMapEntry
-}
-type dnsNapMapEntry struct {
-	conn      net.PacketConn
-	proxyAddr *net.UDPAddr
-}
+//type dnsNatMap struct {
+//	sync.RWMutex
+//	entries map[string]*dnsNapMapEntry
+//}
+//type dnsNapMapEntry struct {
+//	conn      net.PacketConn
+//	proxyAddr *net.UDPAddr
+//	sync.Mutex
+//}
+//
+//func (c *dnsNatMap) Get(key string) *dnsNapMapEntry {
+//	c.RLock()
+//	defer c.RUnlock()
+//	ret, ok := c.entries[key]
+//	if ok {
+//		return ret
+//	} else {
+//		return nil
+//	}
+//}
+//
+//func (c *dnsNatMap) Add(key string, entry *dnsNapMapEntry) {
+//	c.Lock()
+//	defer c.Unlock()
+//	c.entries[key] = entry
+//}
 
-func (c *dnsNatMap) Get(key string) *dnsNapMapEntry {
-	c.RLock()
-	defer c.RUnlock()
-	ret, ok := c.entries[key]
-	if ok {
-		return ret
-	} else {
-		return nil
-	}
-}
+//func createDNSProxyEntry(dst net.PacketConn, proxyAddr *net.UDPAddr) *dnsNapMapEntry {
+//
+//	return &dnsNapMapEntry{dst, proxyAddr}
+//}
 
-func (c *dnsNatMap) Add(key string, entry *dnsNapMapEntry) {
-	c.Lock()
-	defer c.Unlock()
-	c.entries[key] = entry
-}
-
-func createDNSProxyEntry(dst net.PacketConn, proxyAddr *net.UDPAddr) *dnsNapMapEntry {
-
-	return &dnsNapMapEntry{dst, proxyAddr}
-}
-
-func (c *dnsNatMap) Del(key string) {
-	c.Lock()
-	defer c.Unlock()
-	delete(c.entries, key)
-}
+//func (c *dnsNatMap) Del(key string) {
+//	c.Lock()
+//	defer c.Unlock()
+//	delete(c.entries, key)
+//}
 
 // udp relay
 type relayDataRes struct {
@@ -180,7 +181,7 @@ func StartProxyClient(config config.ShadowsocksConfig, listenAddr string) (*Prox
 	}
 	ret.udpOrigDstMap_ = &udpOrigDstMap{channels: make(map[string]chan dstMapChannel)}
 	ret.udpNatMap_ = &udpNatMap{entries: make(map[string]*udpProxyEntry)}
-	ret.dnsNatMap_ = &dnsNatMap{entries: make(map[string]*dnsNapMapEntry)}
+	//ret.dnsNatMap_ = &dnsNatMap{entries: make(map[string]*dnsNapMapEntry)}
 	go ret.startListenUDP()
 
 	logger.Info("ProxyClient start successful", zap.String("addr", listenAddr))
@@ -388,14 +389,14 @@ func (c *ProxyClient) Stop() {
 		}
 	}
 
-	c.dnsNatMap_.Lock()
-	defer c.dnsNatMap_.Unlock()
-
-	for _, entry := range c.dnsNatMap_.entries {
-		if err := entry.conn.Close(); err != nil {
-			logger.Error("Close DNS proxy failed", zap.String("error", err.Error()))
-		}
-	}
+	//c.dnsNatMap_.Lock()
+	//defer c.dnsNatMap_.Unlock()
+	//
+	//for _, entry := range c.dnsNatMap_.entries {
+	//	if err := entry.conn.Close(); err != nil {
+	//		logger.Error("Close DNS proxy failed", zap.String("error", err.Error()))
+	//	}
+	//}
 
 	logger.Info("ProxyClient stopped")
 
@@ -550,44 +551,57 @@ func (c *ProxyClient) ExchangeDNS(srcAddr string, dnsAddr string, data []byte, d
 	copy(buffer.Bytes(), addrBytes)
 	copy(buffer.Bytes()[addrLen:], data)
 
-	dnsEntry := c.dnsNatMap_.Get(srcAddr)
-	if dnsEntry == nil {
-		if backendProxy := c.getBackendProxy(); backendProxy == nil {
-			err = errors.New("Can not get backend proxy")
+	//dnsEntry := c.dnsNatMap_.Get(srcAddr)
+	//if dnsEntry == nil {
+	//	if backendProxy := c.getBackendProxy(); backendProxy == nil {
+	//		err = errors.New("Can not get backend proxy")
+	//		return
+	//	} else {
+	//		if dnsEntry, err = backendProxy.GetDNSRelayEntry(); err != nil {
+	//			err = errors.Wrap(err, "UDP proxy listen local failed ")
+	//			return
+	//		}
+	//	}
+	//	c.dnsNatMap_.Add(srcAddr, dnsEntry)
+	//}
+	//
+	//dnsEntry.Lock()
+	//defer dnsEntry.Unlock()
+	//defer dnsEntry.conn.Close()
+	//defer c.dnsNatMap_.Del(srcAddr)
+
+
+	if backendProxy := c.getBackendProxy(); backendProxy == nil {
+		err = errors.New("Can not get backend proxy")
+		return
+	} else {
+		var conn net.PacketConn
+		conn, err = net.ListenPacket("udp", "")
+		if err != nil {
+			err = errors.Wrap(err, "DNS proxy listen local failed")
 			return
-		} else {
-			if dnsEntry, err = backendProxy.GetDNSRelayEntry(); err != nil {
-				err = errors.Wrap(err, "UDP proxy listen local failed ")
-				return
+		}
+		conn = backendProxy.cipher_.PacketConn(conn)
+		defer conn.Close()
+		// set timeout for each send
+		// write to remote shadowsocks server
+		if _, err = conn.WriteTo(buffer.Bytes()[:totalLen], backendProxy.udpAddr); err != nil {
+			err = errors.Wrap(err, "Write to DNS proxy failed")
+			return
+		}
+
+		conn.SetReadDeadline(time.Now().Add(dnsTimeout))
+		if n, _, err := conn.ReadFrom(buffer.Bytes()); err != nil{
+			return nil, err
+		}else{
+			if n <= addrLen {
+				err = errors.New("Read query from DNS proxy empty")
+				return nil, err
 			}
-		}
-		c.dnsNatMap_.Add(srcAddr, dnsEntry)
-	}
-	defer func() {
-		c.dnsNatMap_.Del(srcAddr)
-		dnsEntry.conn.Close()
-	}()
-
-	// set timeout for each send
-	// write to remote shadowsocks server
-	for i := int32(0); i < times; i++ {
-		if _, err = dnsEntry.conn.WriteTo(buffer.Bytes()[:totalLen], dnsEntry.proxyAddr); err != nil {
-			err = errors.Wrap(err, "Write to remote DNS failed")
-			return
+			response = make([]byte, n)
+			copy(response, buffer.Bytes()[addrLen:n])
 		}
 	}
-
-	dnsEntry.conn.SetReadDeadline(time.Now().Add(dnsTimeout))
-	n, _, err := dnsEntry.conn.ReadFrom(buffer.Bytes())
-	if err != nil {
-		return
-	}
-	if n <= addrLen {
-		err = errors.New("Read DNS query empty")
-		return
-	}
-	response = make([]byte, n)
-	copy(response, buffer.Bytes()[addrLen:n])
 
 	return
 
