@@ -5,7 +5,7 @@
 Gopkg.lock
 Gopkg.lock
 routing_mgr_cache.yaml
-
+vendor/
 *~
 .DS_Store
 .vagrant
