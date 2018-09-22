@@ -2,6 +2,8 @@
 # Created by https://www.gitignore.io/api/go,linux,macos,windows
 ### Customized ###
 
+Gopkg.lock
+Gopkg.lock
 routing_mgr_cache.yaml
 
 *~
