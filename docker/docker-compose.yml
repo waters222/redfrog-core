@@ -1,0 +1,46 @@
+version: '3.6'
+networks:
+  client_net:
+    driver: overlay
+    attachable: true
+    internal: true
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.168.0.0/24
+  gateway_net:
+    driver: overlay
+    attachable: true
+    internal: true
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.168.1.0/24
+  server_net:
+    driver: overlay
+    attachable: true
+    internal: true
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.168.2.0/24
+services:
+  client:
+    image: alpine:latest
+    command: ["tail", "-f", "/dev/null"]
+    networks:
+      - client_net:
+          ipv4_address: 192.168.0.2
+  gateway:
+    image: alpine:latest
+    command: ["tail", "-f", "/dev/null"]
+    networks:
+      - client_net
+      - gateway_net
+  server:
+    image: alpine:latest
+    command: ["tail", "-f", "/dev/null"]
+    networks:
+      - gateway_net
+      - server_net
+
