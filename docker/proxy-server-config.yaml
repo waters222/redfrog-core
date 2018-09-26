@@ -1,0 +1,24 @@
+servers:
+- listen-addr: "0.0.0.0:20000"
+  tcp-timeout: 120
+  udp-timeout: 30
+  dns-timeout: 10
+  crypt: "AEAD_CHACHA20_POLY1305"
+  Password: "123321A"
+  kcptun:
+    enable: true
+    listen-addr: "0.0.0.0:20010"
+    mode: "fast"
+    thread: 4
+    conn: 4
+    autoexpire: 0
+    mtu: 1350
+    sndwnd: 128
+    rcvwnd: 512
+    datashard: -1
+    parityshard: -1
+    dscp: 0
+    nocomp: false
+    keep-alive-interval: 10
+    keep-alive-timeout: 120
+    sock-buf : 4194304

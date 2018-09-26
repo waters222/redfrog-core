@@ -3,7 +3,7 @@
 ### Customized ###
 
 Gopkg.lock
-Gopkg.lock
+Gopkg.toml
 routing_mgr_cache.yaml
 vendor/
 *~
