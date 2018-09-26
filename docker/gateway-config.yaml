@@ -11,7 +11,7 @@ dns:
   proxy-resolver:
     - "127.0.0.11"
   send-num: 2
-  cache: true
+  cache: false
 pac-list:
   - "pac-list.txt"
 shadowsocks:
