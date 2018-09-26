@@ -31,8 +31,10 @@ services:
       - NET_ADMIN
       - SYS_ADMIN
     volumes:
-#      - ../bin/:/app:ro
+      - ../bin/test:/app/test:ro
       - ./scripts/client.sh:/app/client.sh:ro
+      - ./scripts/run_test.sh:/app/run_test.sh:ro
+    dns: 192.168.0.2
     networks:
       - client_net
     command: ["/bin/sh", "/app/client.sh"]
@@ -93,10 +95,9 @@ services:
         soft: 65535
         hard: 65535
     volumes:
-      - ../bin/redfrog-server:/app/redfrog-server:ro
+      - ../bin/test:/app/test:ro
       - ./scripts/server.sh:/app/server.sh:ro
     networks:
-      server_net:
-        ipv4_address: 192.168.2.2
+      - server_net
     command: ["/bin/sh", "/app/server.sh"]
 

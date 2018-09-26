@@ -2,9 +2,6 @@ packet-mask: "0x1/0x1"
 routing-table: 100
 listen-port: 9090
 ignore-ip:
-- "192.168.0.0/16"
-- "172.16.0.0/12"
-- "10.0.0.0/8"
 
 dns:
   listen-addr: "0.0.0.0:53"

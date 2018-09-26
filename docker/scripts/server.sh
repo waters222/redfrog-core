@@ -1,2 +1,3 @@
 #!/bin/sh
-tail -f /dev/null
+cd /app
+./test -m server -addr :9191
