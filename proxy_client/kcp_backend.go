@@ -94,8 +94,8 @@ func (c *KCPBackend) Stop() {
 		if err := c.muxConns[idx].session.Close(); err != nil {
 			logger.Error("Kcp close muxConn failed", zap.String("error", err.Error()))
 		}
-
 	}
+
 	logger.Info("KCP backend stopped", zap.String("addr", c.config.Server))
 
 }

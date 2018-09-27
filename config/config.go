@@ -142,7 +142,6 @@ type DnsConfig struct {
 	ListenAddr    string         `yaml:"listen-addr"`
 	LocalResolver []string       `yaml:"local-resolver"`
 	ProxyResolver []string       `yaml:"proxy-resolver"`
-	DnsTimeout    int            `yaml:"dns-timeout"`
 	SendNum       int            `yaml:"send-num"`
 	Cache         bool 				`yaml:"cache"`
 }
@@ -150,7 +149,8 @@ type DnsConfig struct {
 func (c *DnsConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type rawConfig DnsConfig
 	raw := rawConfig{
-		DnsTimeout: 120,
+		SendNum : 1,
+		Cache : true,
 	}
 
 	if err := unmarshal(&raw); err != nil {

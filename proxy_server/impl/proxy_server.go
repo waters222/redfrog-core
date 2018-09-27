@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/pkg/errors"
-	"github.com/shadowsocks/go-shadowsocks2/core"
-	"github.com/shadowsocks/go-shadowsocks2/socks"
+	"github.com/weishi258/go-shadowsocks2/core"
+	"github.com/weishi258/go-shadowsocks2/socks"
 	"github.com/weishi258/redfrog-core/common"
 	"github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/log"
@@ -273,11 +273,7 @@ func (c *ProxyServer) handleUDP(buffer *bytes.Buffer, dataLen int, srcAddr net.A
 		c.udpNatMap_.Del(keyStr)
 		logger.Error("UPD write to remote failed", zap.String("error", err.Error()))
 	}else{
-		if dstAddr.Port == 53{
-			remoteConnEntry.conn.SetReadDeadline(time.Now().Add(c.dnsTimeout_))
-		}else{
-			remoteConnEntry.conn.SetReadDeadline(time.Now().Add(c.udpTimeout_))
-		}
+		remoteConnEntry.conn.SetReadDeadline(time.Now().Add(c.udpTimeout_))
 		logger.Debug("UDP write to remote successful", zap.String("dst", dstAddr.String()))
 	}
 
@@ -296,42 +292,39 @@ func (c *ProxyServer) copyFromRemote(entry *udpNatMapEntry, keyStr string, dstAd
 
 	for {
 		// let dns query fast expire
-		if dstAddr.Port == 53 {
-			entry.conn.SetReadDeadline(time.Now().Add(c.dnsTimeout_))
-		}else{
-			entry.conn.SetReadDeadline(time.Now().Add(c.udpTimeout_))
-		}
+		entry.conn.SetReadDeadline(time.Now().Add(c.udpTimeout_))
 
-		dataLen, _, err := entry.conn.ReadFrom(remoteBuffer.Bytes())
-		if err != nil {
+		if dataLen, _, err := entry.conn.ReadFrom(remoteBuffer.Bytes()); err != nil{
 			if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
-				logger.Debug("UDP read from remote failed", zap.String("error", err.Error()))
+				logger.Error("UDP read from remote failed", zap.String("error", err.Error()))
 			}
 			return
-		}
-		// lets write back
-		headerLen := len(entry.header)
-		totalLen := dataLen + headerLen
-		if totalLen > common.UDP_BUFFER_SIZE {
-			writeBuffer := make([]byte, totalLen)
-			copy(writeBuffer[:headerLen], entry.header)
-			copy(writeBuffer[headerLen:totalLen], remoteBuffer.Bytes()[:dataLen])
-			if _, err = c.udpListener_.WriteTo(writeBuffer, srcAddr); err != nil {
-				logger.Error("UDP write back failed", zap.String("error", err.Error()))
-				return
-			}
-		} else {
-			writeBuffer := c.udpLeakyBuffer.Get()
-			copy(writeBuffer.Bytes(), entry.header)
-			copy(writeBuffer.Bytes()[headerLen:], remoteBuffer.Bytes()[:dataLen])
-			if _, err = c.udpListener_.WriteTo(writeBuffer.Bytes()[:totalLen], srcAddr); err != nil {
-				c.udpLeakyBuffer.Put(writeBuffer)
-				logger.Error("UDP write back failed", zap.String("error", err.Error()))
-				return
+		}else{
+			// lets write back
+			headerLen := len(entry.header)
+			totalLen := dataLen + headerLen
+			if totalLen > common.UDP_BUFFER_SIZE {
+				writeBuffer := make([]byte, totalLen)
+				copy(writeBuffer[:headerLen], entry.header)
+				copy(writeBuffer[headerLen:totalLen], remoteBuffer.Bytes()[:dataLen])
+				if _, err = c.udpListener_.WriteTo(writeBuffer, srcAddr); err != nil {
+					logger.Error("UDP write back failed", zap.String("error", err.Error()))
+					return
+				}
 			} else {
-				c.udpLeakyBuffer.Put(writeBuffer)
+				writeBuffer := c.udpLeakyBuffer.Get()
+				copy(writeBuffer.Bytes(), entry.header)
+				copy(writeBuffer.Bytes()[headerLen:], remoteBuffer.Bytes()[:dataLen])
+				if _, err = c.udpListener_.WriteTo(writeBuffer.Bytes()[:totalLen], srcAddr); err != nil {
+					c.udpLeakyBuffer.Put(writeBuffer)
+					logger.Error("UDP write back failed", zap.String("error", err.Error()))
+					return
+				} else {
+					c.udpLeakyBuffer.Put(writeBuffer)
+				}
 			}
+			logger.Debug("UDP write back to successful", zap.String("addr", srcAddr.String()))
 		}
-		logger.Debug("UDP write back to successful", zap.String("addr", srcAddr.String()))
+
 	}
 }

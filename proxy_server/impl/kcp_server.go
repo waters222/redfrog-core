@@ -2,7 +2,7 @@ package impl
 
 import (
 	"github.com/pkg/errors"
-	"github.com/shadowsocks/go-shadowsocks2/socks"
+	"github.com/weishi258/go-shadowsocks2/socks"
 	"github.com/weishi258/kcp-go-ng"
 	"github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/kcp_helper"

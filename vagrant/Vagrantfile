@@ -20,8 +20,8 @@ sudo sysctl -w net.ipv4.ip_forward=1
 
 
 
-export INTERFACE_IN=eth0
-export INTERFACE_OUT=eth1
+export INTERFACE_IN=enp1s0
+export INTERFACE_OUT=enp1s0
 
 sudo iptables -t filter --flush INPUT
 sudo iptables -t filter -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT

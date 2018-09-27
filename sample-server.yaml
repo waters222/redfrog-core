@@ -1,8 +1,7 @@
 servers:
   - listen-addr: "0.0.0.0:20000"
     tcp-timeout: 120
-    udp-timeout: 30
-    dns-timeout: 10
+    udp-timeout: 60
     crypt: "AEAD_CHACHA20_POLY1305"
     Password: "123321A"
     kcptun:

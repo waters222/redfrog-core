@@ -8,7 +8,6 @@ ignore-ip:
 
 dns:
   listen-addr: "192.168.0.1:53"
-  dns-timeout: 10
   local-resolver:
     - "114.114.114.114"
   proxy-resolver:
@@ -25,7 +24,7 @@ shadowsocks:
       crypt: "AEAD_CHACHA20_POLY1305"
       Password: "123321A"
       tcp-timeout: 120
-      udp-timeout: 30
+      udp-timeout: 60
       kcptun:
         enable: true
         server: "65.49.196.94:20010"
@@ -48,7 +47,7 @@ shadowsocks:
       crypt: "AEAD_CHACHA20_POLY1305"
       Password: "123321A"
       tcp-timeout: 120
-      udp-timeout: 30
+      udp-timeout: 60
       kcptun:
         enable: true
         server: "149.28.13.248:20001"

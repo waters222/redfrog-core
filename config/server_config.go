@@ -15,7 +15,6 @@ type ServerConfig struct {
 	ListenAddr string       `yaml:"listen-addr"`
 	UdpTimeout int          `yaml:"udp-timeout"`
 	TcpTimeout int          `yaml:"tcp-timeout"`
-	DnsTimeout int          `yaml:"dns-timeout"`
 	Crypt      string       `yaml:"crypt"`
 	Password   string       `yaml:"password"`
 	Kcptun     KcptunConfig `yaml:"kcptun"`

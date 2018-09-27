@@ -36,7 +36,6 @@ type DnsServer struct {
 	remoteResolver []*dnsResolver
 
 	proxyClient *proxy_client.ProxyClient
-	dnsTimeout  int32
 
 	dnsResolverMux sync.RWMutex
 
@@ -94,7 +93,6 @@ func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingM
 
 	ret = &DnsServer{}
 	ret.proxyClient = proxyClient
-	ret.dnsTimeout = int32(dnsConfig.DnsTimeout)
 	if routingMgr == nil {
 		return nil, errors.New("Routing manager is nil")
 	}
@@ -183,8 +181,6 @@ func (c *DnsServer)Reload(dnsConfig config.DnsConfig){
 	c.remoteResolver = remoteResolver
 
 
-	// reload timeout
-	atomic.StoreInt32(&c.dnsTimeout, int32(dnsConfig.DnsTimeout))
 
 	// reload DNS cache
 	c.dnsCacheMux.Lock()
@@ -271,6 +267,45 @@ func (c *DnsServer) checkCache(r *dns.Msg) *dns.Msg {
 	return nil
 }
 
+func (c * DnsServer) WriteBackProxyResponse(w dns.ResponseWriter, domainName string, responseBytes []byte){
+	logger := log.GetLogger()
+	resDns := new(dns.Msg)
+	if err := resDns.Unpack(responseBytes); err != nil {
+		logger.Error("DNS unpack for proxy resolver failed", zap.String("error", err.Error()))
+		return
+	}
+
+	shouldAddCache := false
+	var ttl uint32
+	for _, a := range resDns.Answer {
+		if a.Header().Class == dns.ClassINET {
+			if a.Header().Rrtype == dns.TypeA {
+				shouldAddCache = true
+				name := strings.TrimSuffix(a.Header().Name, ".")
+				c.routingMgr.AddIp(name, a.(*dns.A).A)
+				logger.Debug("ipv4 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.A).A.String()))
+			} else if a.Header().Rrtype == dns.TypeAAAA {
+				shouldAddCache = true
+				name := strings.TrimSuffix(a.Header().Name, ".")
+				c.routingMgr.AddIp(name, a.(*dns.AAAA).AAAA)
+				logger.Debug("ipv6 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.AAAA).AAAA.String()))
+			} else if a.Header().Rrtype == dns.TypeCNAME {
+				cname := strings.TrimSuffix(a.(*dns.CNAME).Target, ".")
+				c.pacMgr.AddDomain(cname)
+				logger.Debug("Add CNAME to list", zap.String("CNAME", cname))
+			}
+			if a.Header().Ttl > ttl{
+				ttl = a.Header().Ttl
+			}
+		}
+	}
+	if shouldAddCache && c.dnsCaches != nil {
+		c.AddDnsCache(domainName, responseBytes, ttl)
+	}
+
+	w.WriteMsg(resDns)
+}
+
 func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	logger := log.GetLogger()
 
@@ -302,7 +337,7 @@ func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 			logger.Error("Pack DNS query for proxy failed", zap.String("error", err.Error()))
 			return
 		}
-		responseBytes, err := c.proxyClient.ExchangeDNS(w.RemoteAddr().String(), resolver.addr, data, time.Duration(atomic.LoadInt32(&c.dnsTimeout)) * time.Second, atomic.LoadInt32(&c.sendNum))
+		responseBytes, err := c.proxyClient.ExchangeDNS(w.RemoteAddr().String(), resolver.addr, data)
 		if err != nil {
 			logger.Error("DNS proxy resolve failed", zap.String("domain", domainName), zap.String("error", err.Error()))
 			return
