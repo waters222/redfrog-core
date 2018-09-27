@@ -52,8 +52,6 @@ func NewNatMap() *udpNatMap {
 }
 
 func (c *udpNatMap) Get(key string) *udpNatMapEntry {
-	c.RLock()
-	defer c.RUnlock()
 	if entry, ok := c.entries[key]; ok {
 		return entry
 	} else {
@@ -62,14 +60,10 @@ func (c *udpNatMap) Get(key string) *udpNatMapEntry {
 }
 
 func (c *udpNatMap) Del(key string) {
-	c.Lock()
-	defer c.Unlock()
 	delete(c.entries, key)
 }
 
 func (c *udpNatMap) Add(key string, conn *net.UDPConn, header []byte) (ret *udpNatMapEntry) {
-	c.Lock()
-	defer c.Unlock()
 	ret = &udpNatMapEntry{conn:conn, header:header}
 	c.entries[key] = ret
 	return
@@ -261,19 +255,10 @@ func (c *ProxyServer) handleUDP(buffer *bytes.Buffer, dataLen int, srcAddr net.A
 	logger.Debug("Handle UDP ", zap.String("src", srcAddr.String()), zap.String("dst", dstAddr.String()))
 	keyStr := fmt.Sprintf("%s->%s", srcAddr.String(), dstAddr.String())
 
-	remoteConnEntry := c.udpNatMap_.Get(keyStr)
-	if err := c.innerSendUDP(buffer, dstAddrBytes, srcAddr, dstAddr, dataLen, remoteConnEntry, keyStr, logger); err != nil{
-		if ee, ok := err.(*net.OpError); ok && ee != nil && ee.Err.Error() == "use of closed network connection" {
-			// lets retry one-more time
-			if err = c.innerSendUDP(buffer, dstAddrBytes, srcAddr, dstAddr, dataLen, nil, keyStr, logger); err != nil{
-				logger.Error("UDP write to remote failed", zap.String("error", err.Error()))
-			}
-		}
-		logger.Error("UDP write to remote failed", zap.String("error", err.Error()))
-	}
+	c.udpNatMap_.Lock()
+	defer c.udpNatMap_.Unlock()
 
-}
-func (c *ProxyServer)innerSendUDP(buffer *bytes.Buffer, dstAddrBytes socks.Addr, srcAddr net.Addr, dstAddr *net.UDPAddr, dataLen int, remoteConnEntry *udpNatMapEntry, keyStr string, logger *zap.Logger) (err error){
+	remoteConnEntry := c.udpNatMap_.Get(keyStr)
 	if remoteConnEntry == nil {
 		remoteConn, err := net.ListenUDP("udp4", nil)
 		if err != nil {
@@ -281,9 +266,13 @@ func (c *ProxyServer)innerSendUDP(buffer *bytes.Buffer, dstAddrBytes socks.Addr,
 			return
 		}
 		remoteConnEntry = c.udpNatMap_.Add(keyStr, remoteConn, dstAddrBytes)
-		go c.copyFromRemote(remoteConnEntry, dstAddr, srcAddr)
+		go c.copyFromRemote(remoteConnEntry, keyStr, dstAddr, srcAddr)
 	}
-	if _, err = remoteConnEntry.conn.WriteTo(buffer.Bytes()[len(dstAddrBytes):dataLen], dstAddr); err == nil{
+	if _, err = remoteConnEntry.conn.WriteTo(buffer.Bytes()[len(dstAddrBytes):dataLen], dstAddr); err != nil{
+		// something failed, so delete this entry
+		c.udpNatMap_.Del(keyStr)
+		logger.Error("UPD write to remote failed", zap.String("error", err.Error()))
+	}else{
 		if dstAddr.Port == 53{
 			remoteConnEntry.conn.SetReadDeadline(time.Now().Add(c.dnsTimeout_))
 		}else{
@@ -291,14 +280,16 @@ func (c *ProxyServer)innerSendUDP(buffer *bytes.Buffer, dstAddrBytes socks.Addr,
 		}
 		logger.Debug("UDP write to remote successful", zap.String("dst", dstAddr.String()))
 	}
-	return
+
 }
 
-
-func (c *ProxyServer) copyFromRemote(entry *udpNatMapEntry, dstAddr *net.UDPAddr, srcAddr net.Addr) {
+func (c *ProxyServer) copyFromRemote(entry *udpNatMapEntry, keyStr string, dstAddr *net.UDPAddr, srcAddr net.Addr) {
 	logger := log.GetLogger()
+
+	defer c.udpNatMap_.Unlock()
 	defer entry.conn.Close()
-	defer c.udpNatMap_.Del(dstAddr.String())
+	defer c.udpNatMap_.Del(keyStr)
+	defer c.udpNatMap_.Lock()
 
 	remoteBuffer := c.udpLeakyBuffer.Get()
 	defer c.udpLeakyBuffer.Put(remoteBuffer)
