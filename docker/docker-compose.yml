@@ -32,8 +32,11 @@ services:
       - SYS_ADMIN
     volumes:
       - ../bin/test:/app/test:ro
+      - ../bin/batchTest:/app/batchTest:ro
       - ./scripts/client.sh:/app/client.sh:ro
       - ./scripts/run_test.sh:/app/run_test.sh:ro
+      - ./scripts/runBatchTest.sh:/app/runBatchTest.sh:ro
+      - ./pac-list.txt:/app/dns.txt:ro
     dns: 192.168.0.2
     networks:
       - client_net

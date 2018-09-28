@@ -7,7 +7,8 @@ env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a  -o ./bin/redfrog-client .
 
 echo "Building test"
 env CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -a  -o ./bin/test ./test/test.go
-
+echo "Building batchTest"
+env CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -a  -o ./bin/batchTest ./test/batchtest.go
 
 
 echo "Building proxy-client-arm64"

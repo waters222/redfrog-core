@@ -31,7 +31,6 @@ var sigChan chan os.Signal
 func main() {
 
 	sigChan = make(chan os.Signal, 5)
-	done := make(chan bool)
 
 	signal.Notify(sigChan,
 		syscall.SIGHUP,
@@ -57,7 +56,7 @@ func main() {
 	flag.StringVar(&mode, "m", "", "mode: client/server")
 	flag.StringVar(&addr, "addr", "", "addr")
 	flag.StringVar(&msg, "msg", "hello world", "send msg")
-	flag.IntVar(&repeatTime, "r", 0, "repeat time in second")
+	flag.IntVar(&repeatTime, "r", 0, "repeat interval in second")
 	flag.IntVar(&CONN_DEADLINE, "timeout", 60, "timeout")
 	flag.StringVar(&logLevel, "l", "info", "log level")
 	flag.BoolVar(&bTransparent, "t", false, "transparent")
@@ -81,16 +80,24 @@ func main() {
 
 	var ticker *time.Ticker
 	if mode == "client" {
+
 		if repeatTime > 0 {
 			ticker = time.NewTicker(time.Second * time.Duration(repeatTime))
 			logger.Info("Running client repeat mode", zap.Int("seconds", repeatTime), zap.Int("timeout", CONN_DEADLINE))
-			go func() {
-				for range ticker.C {
-					runClient(addr, msg)
+			for{
+				select{
+					case <- ticker.C:
+						if err = runClient(addr, msg); err != nil {
+							return
+						}
+						case <- sigChan:
+							ticker.Stop()
+							return
+
 				}
-			}()
+			}
 		} else {
-			runClient(addr, msg)
+			err = runClient(addr, msg)
 			return
 		}
 
@@ -121,21 +128,12 @@ func main() {
 		return
 	}
 
-	logger.Info("RedFrog Test is started")
-	go func() {
-		sig := <-sigChan
-
-		logger.Debug("RedFrog caught signal for exit",
-			zap.Any("signal", sig))
-		done <- true
-
-		if ticker != nil {
-			ticker.Stop()
-		}
-	}()
-	<-done
+	logger.Info("RedFrog Test Server is started")
+	sig := <-sigChan
+	logger.Debug("RedFrog caught signal for exit",
+		zap.Any("signal", sig))
 }
-func runClient(addr string, msg string) {
+func runClient(addr string, msg string) error {
 	logger := log.GetLogger()
 	var err error
 	logger.Info("Running as client mode", zap.String("addr", addr))
@@ -145,6 +143,7 @@ func runClient(addr string, msg string) {
 	if err = writeUdp(addr, msg); err != nil {
 		logger.Error("UDP Client failed", zap.String("error", err.Error()))
 	}
+	return err
 }
 func writeTcp(addr string, msg string) (err error) {
 	logger := log.GetLogger()
