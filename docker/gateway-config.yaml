@@ -9,7 +9,7 @@ dns:
     - "127.0.0.11"
   timeout: 2
   send-num: 2
-  cache: false
+  cache: true
 pac-list:
   - "pac-list.txt"
 shadowsocks:

@@ -75,6 +75,7 @@ func (c *DnsServer) GetDnsCache(domain string) *dns.Msg {
 	defer c.dnsCacheMux.Unlock()
 	if c.dnsCaches != nil{
 		if res, ok := c.dnsCaches.caches[domain]; ok {
+			log.GetLogger().Debug("Get cache hit", zap.String("domain", domain))
 			if time.Now().Before(res.ttl) {
 				return res.response
 			} else {
@@ -251,7 +252,7 @@ func (c *DnsServer) checkCache(r *dns.Msg) *dns.Msg {
 	if c.dnsCaches != nil {
 		for _, q := range r.Question {
 			if q.Qclass == dns.ClassINET {
-				if resDns := c.GetDnsCache(q.Name); resDns != nil {
+				if resDns := c.GetDnsCache(strings.TrimSuffix(q.Name, ".")); resDns != nil {
 					resDns.Id = r.Id
 					return resDns
 				}
@@ -342,24 +343,25 @@ func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 		var ttl uint32
 		for _, a := range resDns.Answer {
 			if a.Header().Class == dns.ClassINET {
+				if a.Header().Ttl > ttl{
+					ttl = a.Header().Ttl
+				}
 				if a.Header().Rrtype == dns.TypeA {
 					shouldAddCache = true
 					name := strings.TrimSuffix(a.Header().Name, ".")
 					c.routingMgr.AddIp(name, a.(*dns.A).A)
-					logger.Debug("ipv4 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.A).A.String()))
+					logger.Debug("ipv4 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.A).A.String()), zap.Uint32("ttl", ttl))
 				} else if a.Header().Rrtype == dns.TypeAAAA {
 					shouldAddCache = true
 					name := strings.TrimSuffix(a.Header().Name, ".")
 					c.routingMgr.AddIp(name, a.(*dns.AAAA).AAAA)
-					logger.Debug("ipv6 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.AAAA).AAAA.String()))
+					logger.Debug("ipv6 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.AAAA).AAAA.String()), zap.Uint32("ttl", ttl))
 				} else if a.Header().Rrtype == dns.TypeCNAME {
 					cname := strings.TrimSuffix(a.(*dns.CNAME).Target, ".")
 					c.pacMgr.AddDomain(cname)
 					logger.Debug("Add CNAME to list", zap.String("CNAME", cname))
 				}
-				if a.Header().Ttl > ttl{
-					ttl = a.Header().Ttl
-				}
+
 			}
 		}
 		if shouldAddCache && c.dnsCaches != nil {
