@@ -248,7 +248,7 @@ func (c *proxyBackend)ResolveDNS(payload []byte, timeout int) ([]byte, error){
 
 type dnsProxyResolver struct {
 	dnsConn        net.PacketConn
-	dnsIdQueue     *queue.RingBuffer
+	dnsIdQueue     chan uint16
 
 	dnsQueryMap    map[uint16]chan<-[]byte
 	dnsQueryMapMux sync.RWMutex
@@ -261,16 +261,15 @@ func StartDnsResolver(cipher core.Cipher) (ret *dnsProxyResolver, err error){
 	}
 	ret.dnsConn = cipher.PacketConn(ret.dnsConn)
 
-	ret.dnsIdQueue = queue.NewRingBuffer(math.MaxUint16)
+	ret.dnsIdQueue = make(chan uint16, math.MaxUint16)
 	for i:=1; i < math.MaxUint16; i++{
-		ret.dnsIdQueue.Put(i)
+		ret.dnsIdQueue <- uint16(i)
 	}
 	go ret.processResponse()
 	return
 }
 
 func (c *dnsProxyResolver) Stop() error{
-	c.dnsIdQueue.Dispose()
 	return c.dnsConn.Close()
 }
 
@@ -291,9 +290,9 @@ func (c *dnsProxyResolver)processResponse(){
 			if sig, ok := c.dnsQueryMap[dnsId]; ok{
 				sig <- buffer
 				delete(c.dnsQueryMap, dnsId)
+				c.dnsIdQueue <- dnsId
 			}
 			// put id back for re-use
-			c.dnsIdQueue.Put(dnsId)
 			c.dnsQueryMapMux.Unlock()
 
 		}
@@ -301,23 +300,18 @@ func (c *dnsProxyResolver)processResponse(){
 }
 
 func (c *dnsProxyResolver) resolveDNS(addr *net.UDPAddr, payload []byte, timeout int) ([]byte, error){
-	c.dnsQueryMapMux.Lock()
+
 	// get un-used id from queue
-	var dnsId uint16
-	if id, err := c.dnsIdQueue.Get(); err != nil{
-		return nil, errors.Wrap(err, "dns retrieve id failed")
-	}else{
-		dnsId = id.(uint16)
-	}
+	dnsId := <- c.dnsIdQueue
 	// replace original id with new id
 	binary.BigEndian.PutUint16(payload, dnsId)
-
 	if _, err := c.dnsConn.WriteTo(payload, addr); err != nil{
-		c.dnsQueryMapMux.Unlock()
+		c.dnsIdQueue <- dnsId
 		return nil, errors.Wrap(err, "Write to remote dns proxy failed")
 	}else{
 		// successful write so map it for later resolve response
 		sig := make(chan[]byte)
+		c.dnsQueryMapMux.Lock()
 		c.dnsQueryMap[dnsId] = sig
 		c.dnsQueryMapMux.Unlock()
 
@@ -331,7 +325,7 @@ func (c *dnsProxyResolver) resolveDNS(addr *net.UDPAddr, payload []byte, timeout
 				c.dnsQueryMapMux.Lock()
 				defer c.dnsQueryMapMux.Unlock()
 				delete(c.dnsQueryMap, dnsId)
-				c.dnsIdQueue.Put(dnsId)
+				c.dnsIdQueue <- dnsId
 				return nil, errors.New("read dns from remote proxy timeout")
 		}
 	}
