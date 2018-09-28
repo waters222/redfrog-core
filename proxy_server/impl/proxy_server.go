@@ -1,7 +1,6 @@
 package impl
 
 import (
-	"bytes"
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/weishi258/go-shadowsocks2/core"
@@ -64,7 +63,9 @@ func (c *udpNatMap) Del(key string) {
 }
 
 func (c *udpNatMap) Add(key string, conn *net.UDPConn, header []byte) (ret *udpNatMapEntry) {
-	ret = &udpNatMapEntry{conn:conn, header:header}
+	buf := make([]byte, len(header))
+	copy(buf, header)
+	ret = &udpNatMapEntry{conn:conn, header:buf}
 	c.entries[key] = ret
 	return
 }
@@ -220,7 +221,7 @@ func (c *ProxyServer) startUDPAccept() {
 	logger := log.GetLogger()
 	for {
 		buffer := c.udpLeakyBuffer.Get()
-		if dataLen, srcAddr, err := c.udpListener_.ReadFrom(buffer.Bytes()); err != nil {
+		if dataLen, srcAddr, err := c.udpListener_.ReadFrom(buffer); err != nil {
 			c.udpLeakyBuffer.Put(buffer)
 			if ee, ok := err.(*net.OpError); ok && ee != nil && ee.Err.Error() != "use of closed network connection" {
 				logger.Info("UDP Read failed", zap.String("error", err.Error()))
@@ -234,12 +235,12 @@ func (c *ProxyServer) startUDPAccept() {
 	logger.Info("UDP listener stopped", zap.String("listenAddr", c.listenAddr))
 }
 
-func (c *ProxyServer) handleUDP(buffer *bytes.Buffer, dataLen int, srcAddr net.Addr) {
+func (c *ProxyServer) handleUDP(buffer []byte, dataLen int, srcAddr net.Addr) {
 	logger := log.GetLogger()
 
 	defer c.udpLeakyBuffer.Put(buffer)
 
-	dstAddrBytes := socks.SplitAddr(buffer.Bytes()[:dataLen])
+	dstAddrBytes := socks.SplitAddr(buffer[:dataLen])
 	if dstAddrBytes == nil {
 		logger.Error("UDP dst addr is nil")
 		return
@@ -267,7 +268,7 @@ func (c *ProxyServer) handleUDP(buffer *bytes.Buffer, dataLen int, srcAddr net.A
 		remoteConnEntry = c.udpNatMap_.Add(keyStr, remoteConn, dstAddrBytes)
 		go c.copyFromRemote(remoteConnEntry, keyStr, dstAddr, srcAddr)
 	}
-	if _, err = remoteConnEntry.conn.WriteTo(buffer.Bytes()[len(dstAddrBytes):dataLen], dstAddr); err != nil{
+	if _, err = remoteConnEntry.conn.WriteTo(buffer[len(dstAddrBytes):dataLen], dstAddr); err != nil{
 		// something failed, so delete this entry
 		c.udpNatMap_.Del(keyStr)
 		logger.Error("UPD write to remote failed", zap.String("error", err.Error()))
@@ -293,7 +294,7 @@ func (c *ProxyServer) copyFromRemote(entry *udpNatMapEntry, keyStr string, dstAd
 		// let dns query fast expire
 		entry.conn.SetReadDeadline(time.Now().Add(c.udpTimeout_))
 
-		if dataLen, _, err := entry.conn.ReadFrom(remoteBuffer.Bytes()); err != nil{
+		if dataLen, _, err := entry.conn.ReadFrom(remoteBuffer); err != nil{
 			if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
 				logger.Error("UDP read from remote failed", zap.String("error", err.Error()))
 			}
@@ -304,17 +305,17 @@ func (c *ProxyServer) copyFromRemote(entry *udpNatMapEntry, keyStr string, dstAd
 			totalLen := dataLen + headerLen
 			if totalLen > common.UDP_BUFFER_SIZE {
 				writeBuffer := make([]byte, totalLen)
-				copy(writeBuffer[:headerLen], entry.header)
-				copy(writeBuffer[headerLen:totalLen], remoteBuffer.Bytes()[:dataLen])
+				copy(writeBuffer, entry.header)
+				copy(writeBuffer[headerLen:], remoteBuffer[:dataLen])
 				if _, err = c.udpListener_.WriteTo(writeBuffer, srcAddr); err != nil {
 					logger.Error("UDP write back failed", zap.String("error", err.Error()))
 					return
 				}
 			} else {
 				writeBuffer := c.udpLeakyBuffer.Get()
-				copy(writeBuffer.Bytes(), entry.header)
-				copy(writeBuffer.Bytes()[headerLen:], remoteBuffer.Bytes()[:dataLen])
-				if _, err = c.udpListener_.WriteTo(writeBuffer.Bytes()[:totalLen], srcAddr); err != nil {
+				copy(writeBuffer, entry.header)
+				copy(writeBuffer[headerLen:], remoteBuffer[:dataLen])
+				if _, err = c.udpListener_.WriteTo(writeBuffer[:totalLen], srcAddr); err != nil {
 					c.udpLeakyBuffer.Put(writeBuffer)
 					logger.Error("UDP write back failed", zap.String("error", err.Error()))
 					return

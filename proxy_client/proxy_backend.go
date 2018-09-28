@@ -286,47 +286,53 @@ func (c *dnsProxyResolver)processResponse(){
 	c.dnsConn.SetReadDeadline(time.Time{})
 	for{
 		buffer := c.buffer.Get()
-		if dataLen, _, err := c.dnsConn.ReadFrom(buffer.Bytes()); err != nil{
+		if dataLen, _, err := c.dnsConn.ReadFrom(buffer); err != nil{
 			c.buffer.Put(buffer)
 			logger.Error("Dns resolver read failed", zap.String("error", err.Error()))
 			return
 		}else{
-			go func(){
-				defer c.buffer.Put(buffer)
-				// lets process response
-				// get header length
-				data := buffer.Bytes()[:dataLen]
-				//logger.Debug("read dns response", zap.Int("length", dataLen))
-
-				dstAddrBytes := socks.SplitAddr(data)
-				//logger.Debug("extract dns response", zap.Int("header length", len(dstAddrBytes)))
-				// extract raw response
-				data = data[len(dstAddrBytes):]
-				// extract dnsId
-				dnsId := binary.BigEndian.Uint16(data)
-
-				c.dnsQueryMapMux.Lock()
-				// if id is exists then send signal for notification and delete this entry
-				if sig, ok := c.dnsQueryMap[dnsId]; ok{
-					delete(c.dnsQueryMap, dnsId)
-					// quick release lock since unpack is expensive
-					c.dnsQueryMapMux.Unlock()
-					// put id back for re-use
-					c.dnsIdQueue <- dnsId
-
-					// now we unpack
-					resDns := new(dns.Msg)
-					if err = resDns.Unpack(data); err != nil {
-						logger.Error("DNS unpack for proxy resolver failed", zap.String("error", err.Error()))
-						return
-					}
-					sig <- resDns
-
-				}else{
-					c.dnsQueryMapMux.Unlock()
-				}
-			}()
+			go c.processDns(buffer, dataLen)
 		}
+	}
+}
+
+func (c *dnsProxyResolver)processDns(buffer []byte, dataLen int){
+	logger := log.GetLogger()
+	defer c.buffer.Put(buffer)
+	// lets process response
+	// get header length
+	data := buffer[:dataLen]
+	//logger.Debug("read dns response", zap.Int("length", dataLen))
+
+	dstAddrBytes := socks.SplitAddr(data)
+	if dstAddrBytes == nil{
+		logger.Error("extract shadowsocks proxy header failed")
+		return
+	}
+	headerLen := len(dstAddrBytes)
+	//logger.Debug("extract dns response", zap.Int("header length", headerLen))
+	// extract raw response
+	data = data[headerLen:]
+	// extract dnsId
+	dnsId := binary.BigEndian.Uint16(data)
+
+	// now we unpack
+	resDns := new(dns.Msg)
+	if err := resDns.Unpack(data); err != nil {
+		logger.Error("DNS unpack for proxy resolver failed", zap.String("error", err.Error()))
+		return
+	}
+
+	c.dnsQueryMapMux.Lock()
+	// if id is exists then send signal for notification and delete this entry
+	if sig, ok := c.dnsQueryMap[dnsId]; ok{
+		delete(c.dnsQueryMap, dnsId)
+		c.dnsQueryMapMux.Unlock()
+		// put id back for re-use
+		c.dnsIdQueue <- dnsId
+		sig <- resDns
+	}else{
+		c.dnsQueryMapMux.Unlock()
 	}
 }
 

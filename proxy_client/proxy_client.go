@@ -1,7 +1,6 @@
 package proxy_client
 
 import (
-	"bytes"
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
 	"github.com/weishi258/redfrog-core/common"
@@ -90,7 +89,9 @@ func createUDPProxyEntry(dst net.PacketConn, dstAddr *net.UDPAddr, proxyAddr *ne
 	if err != nil {
 		return nil, err
 	}
-	return &udpProxyEntry{dst, addr, proxyAddr, timeout}, nil
+	buf := make([]byte, len(addr))
+	copy(buf, addr)
+	return &udpProxyEntry{dst, buf, proxyAddr, timeout}, nil
 }
 
 type udpOrigDstMap struct {
@@ -332,7 +333,7 @@ func (c *ProxyClient) startListenUDP() {
 	for {
 		buffer := c.udpBuffer_.Get()
 		oob := c.udpOOBBuffer_.Get()
-		if dataLen, oobLen, _, srcAddr, err := c.udpListener.ReadMsgUDP(buffer.Bytes(), oob.Bytes()); err != nil {
+		if dataLen, oobLen, _, srcAddr, err := c.udpListener.ReadMsgUDP(buffer, oob); err != nil {
 			c.udpBuffer_.Put(buffer)
 			c.udpOOBBuffer_.Put(oob)
 
@@ -341,7 +342,7 @@ func (c *ProxyClient) startListenUDP() {
 			}
 		} else {
 
-			if dstAddr, err := network.ExtractOrigDstFromUDP(oobLen, oob.Bytes()); err != nil {
+			if dstAddr, err := network.ExtractOrigDstFromUDP(oobLen, oob); err != nil {
 				logger.Error("Failed to extract original dst from udp", zap.String("error", err.Error()))
 			} else {
 				go c.handleUDP(buffer, srcAddr, dstAddr, dataLen)
@@ -352,7 +353,7 @@ func (c *ProxyClient) startListenUDP() {
 	}
 	logger.Info("UDP stop listening", zap.String("addr", c.addr))
 }
-func (c *ProxyClient) handleUDP(buffer *bytes.Buffer, srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, dataLen int) {
+func (c *ProxyClient) handleUDP(buffer []byte, srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, dataLen int) {
 	logger := log.GetLogger()
 	defer c.udpBuffer_.Put(buffer)
 	if err := c.RelayUDPData(srcAddr, dstAddr, buffer, dataLen); err != nil {
@@ -505,7 +506,7 @@ func (c *ProxyClient) writeBackUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAdd
 	dstChannel <- dstMapChannel{srcAddr, payload}*/
 }
 
-func (c *ProxyClient) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, data *bytes.Buffer, dataLen int) error {
+func (c *ProxyClient) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, data []byte, dataLen int) error {
 	logger := log.GetLogger()
 
 	udpKey := computeUDPKey(srcAddr, dstAddr)
@@ -542,7 +543,7 @@ func (c *ProxyClient) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, d
 
 			for{
 				udpProxy.dst_.SetReadDeadline(time.Now().Add(udpProxy.timeout))
-				if n, _, err := udpProxy.dst_.ReadFrom(buffer.Bytes()); err != nil{
+				if n, _, err := udpProxy.dst_.ReadFrom(buffer); err != nil{
 					// do not print timeout
 					if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
 						logger.Error("Read udp from remote dst failed", zap.String("error", err.Error()))
@@ -553,7 +554,7 @@ func (c *ProxyClient) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, d
 					// now lets write back
 					headerLen := len(udpProxy.header_)
 					if n > headerLen {
-						c.writeBackUDPData(srcAddr, dstAddr, buffer.Bytes()[headerLen:n], udpProxy.timeout)
+						c.writeBackUDPData(srcAddr, dstAddr, buffer[headerLen:n], udpProxy.timeout)
 					} else {
 						logger.Info("UDP read from remote too small, so not write back", zap.Int("n", n), zap.Int("headerLen", headerLen))
 					}
@@ -573,7 +574,7 @@ func (c *ProxyClient) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, d
 		// too big for our leakybuffer
 		writeData := make([]byte, totalLen)
 		copy(writeData[:headerLen], udpProxy.header_)
-		copy(writeData[headerLen:totalLen], data.Bytes()[:dataLen])
+		copy(writeData[headerLen:totalLen], data[:dataLen])
 		// set timeout for each send
 		// write to remote shadowsocks server
 		if _, err := udpProxy.dst_.WriteTo(writeData, udpProxy.proxyAddr); err != nil {
@@ -584,11 +585,11 @@ func (c *ProxyClient) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, d
 		// get leaky buffer
 		newBuffer := c.udpBuffer_.Get()
 		defer c.udpBuffer_.Put(newBuffer)
-		copy(newBuffer.Bytes(), udpProxy.header_)
-		copy(newBuffer.Bytes()[headerLen:], data.Bytes()[:dataLen])
+		copy(newBuffer, udpProxy.header_)
+		copy(newBuffer[headerLen:], data[:dataLen])
 		// set timeout for each send
 		// write to remote shadowsocks server
-		if _, err := udpProxy.dst_.WriteTo(newBuffer.Bytes()[:totalLen], udpProxy.proxyAddr); err != nil {
+		if _, err := udpProxy.dst_.WriteTo(newBuffer[:totalLen], udpProxy.proxyAddr); err != nil {
 			return err
 		}
 	}
@@ -637,10 +638,10 @@ func (c *ProxyClient) ExchangeDNS(dnsAddr string, data []byte, timeout time.Dura
 		buffer := c.udpBuffer_.Get()
 		defer c.udpBuffer_.Put(buffer)
 
-		copy(buffer.Bytes(), addrBytes)
-		copy(buffer.Bytes()[addrLen:], data)
+		copy(buffer, addrBytes)
+		copy(buffer[addrLen:], data)
 
-		return backendProxy.ResolveDNS(addrLen, buffer.Bytes()[:totalLen], timeout)
+		return backendProxy.ResolveDNS(addrLen, buffer[:totalLen], timeout)
 		//
 		//var conn net.PacketConn
 		//conn, err = net.ListenPacket("udp", "")
