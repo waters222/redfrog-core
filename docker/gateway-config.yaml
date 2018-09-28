@@ -5,10 +5,9 @@ ignore-ip:
 
 dns:
   listen-addr: "0.0.0.0:53"
-  local-resolver:
-    - "127.0.0.11"
   proxy-resolver:
     - "127.0.0.11"
+  timeout: 2
   send-num: 2
   cache: false
 pac-list:

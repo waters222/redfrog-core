@@ -1,12 +1,15 @@
 package config
 
 import (
+	"bytes"
 	"github.com/pkg/errors"
+	"github.com/weishi258/redfrog-core/common"
 	"github.com/weishi258/redfrog-core/log"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
+	"os/exec"
 )
 
 type KcptunConfig struct {
@@ -143,6 +146,7 @@ type DnsConfig struct {
 	LocalResolver []string       `yaml:"local-resolver"`
 	ProxyResolver []string       `yaml:"proxy-resolver"`
 	SendNum       int            `yaml:"send-num"`
+	Timeout		  int			 `yaml:"timeout"`
 	Cache         bool 				`yaml:"cache"`
 }
 
@@ -151,11 +155,13 @@ func (c *DnsConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	raw := rawConfig{
 		SendNum : 1,
 		Cache : true,
+		Timeout: 2,
 	}
 
 	if err := unmarshal(&raw); err != nil {
 		return err
 	}
+
 	*c = DnsConfig(raw)
 	return nil
 }
@@ -219,5 +225,34 @@ func ParseClientConfig(path string) (ret Config, err error) {
 	}
 	ret.Shadowsocks.Servers = serversFiltered
 
+
+	// check local resolver
+
+	if ret.Dns.LocalResolver == nil || len(ret.Dns.LocalResolver) == 0{
+		var serversBytes []byte
+		if serversBytes, err = common.PipeCommand(exec.Command("cat", "/etc/resolv.conf"),
+													exec.Command("grep", "-i", "^nameserver"),
+													exec.Command("head", "-n5"),
+													exec.Command("cut", "-d", " ", "-f2")); err != nil{
+			err = errors.Wrap(err,"extract dns server from /etc/resolve.conf failed")
+			return
+		}
+		if len(serversBytes) == 0{
+			err = errors.New("extract dns server from /etc/resolve.conf failed: because its empty")
+			return
+		}
+		stubs := bytes.Split(serversBytes, []byte{'\n'})
+		ret.Dns.LocalResolver = make([]string, 0)
+		for _, stub := range stubs{
+			if len(stub) > 0{
+				stub = bytes.TrimSpace(stub)
+				ret.Dns.LocalResolver = append(ret.Dns.LocalResolver, string(stub[:]))
+			}
+		}
+		if len(ret.Dns.LocalResolver) == 0{
+			err = errors.New("extract dns server from /etc/resolve.conf failed: format wrong")
+			return
+		}
+	}
 	return
 }

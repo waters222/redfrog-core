@@ -75,7 +75,6 @@ func StartProxyServer(config config.ServerConfig) (ret *ProxyServer, err error) 
 
 	ret.tcpTimeout_ = time.Second * time.Duration(config.TcpTimeout)
 	ret.udpTimeout_ = time.Second * time.Duration(config.UdpTimeout)
-	ret.dnsTimeout_ = time.Second * time.Duration(config.DnsTimeout)
 	ret.listenAddr = config.ListenAddr
 	ret.udpLeakyBuffer = common.NewLeakyBuffer(common.UDP_BUFFER_POOL_SIZE*4, common.UDP_BUFFER_SIZE)
 

@@ -16,7 +16,6 @@ import (
 	"net"
 	"sync"
 	"time"
-	"github.com/golang-collections/go-datastructures/queue"
 )
 
 
@@ -76,7 +75,7 @@ func CreateProxyBackend(remoteServerConfig config.RemoteServerConfig) (ret *prox
 	}
 
 
-	if ret.dnsResolver, err = StartDnsResolver(); err != nil{
+	if ret.dnsResolver, err = StartDnsResolver(ret.cipher_); err != nil{
 		err = errors.Wrap(err, "Dns conn listening failed")
 		return
 	}
@@ -239,7 +238,8 @@ func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEn
 
 
 
-func (c *proxyBackend)ResolveDNS(payload []byte, timeout int) ([]byte, error){
+func (c *proxyBackend)ResolveDNS(payload []byte, timeout time.Duration) ([]byte, error){
+	// we use half of udp timeout for dns timeout
 	return c.dnsResolver.resolveDNS(c.udpAddr, payload, timeout)
 }
 
@@ -299,7 +299,7 @@ func (c *dnsProxyResolver)processResponse(){
 	}
 }
 
-func (c *dnsProxyResolver) resolveDNS(addr *net.UDPAddr, payload []byte, timeout int) ([]byte, error){
+func (c *dnsProxyResolver) resolveDNS(addr *net.UDPAddr, payload []byte, timeout time.Duration) ([]byte, error){
 
 	// get un-used id from queue
 	dnsId := <- c.dnsIdQueue
@@ -316,7 +316,7 @@ func (c *dnsProxyResolver) resolveDNS(addr *net.UDPAddr, payload []byte, timeout
 		c.dnsQueryMapMux.Unlock()
 
 		// set timeout for dns query
-		timeout := time.NewTimer(time.Duration(timeout) * time.Second)
+		timeout := time.NewTimer(timeout)
 		select{
 			case responsePayload := <- sig:
 				return responsePayload, nil

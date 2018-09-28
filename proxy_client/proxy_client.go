@@ -3,7 +3,6 @@ package proxy_client
 import (
 	"bytes"
 	"github.com/pkg/errors"
-	"github.com/weishi258/go-shadowsocks2/shadowaead"
 	"github.com/weishi258/redfrog-core/common"
 	"github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/log"
@@ -32,7 +31,6 @@ type ProxyClient struct {
 	udpNatMap_     *udpNatMap
 	//dnsNatMap_     *dnsNatMap
 
-	dnsClientsMap_	*dnsClientsMap
 }
 
 //type dnsNatMap struct {
@@ -179,7 +177,6 @@ func StartProxyClient(config config.ShadowsocksConfig, listenAddr string) (*Prox
 	}
 	ret.udpOrigDstMap_ = &udpOrigDstMap{channels: make(map[string]chan dstMapChannel)}
 	ret.udpNatMap_ = &udpNatMap{entries: make(map[string]*udpProxyEntry)}
-	ret.dnsClientsMap_ = &dnsClientsMap{clients: make(map[string]*dnsClientEntry)}
 	go ret.startListenUDP()
 
 	logger.Info("ProxyClient start successful", zap.String("addr", listenAddr))
@@ -618,7 +615,7 @@ func (c *ProxyClient) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, d
 // using relay udp data to exchange dns
 
 
-func (c *ProxyClient) ExchangeDNS(srcAddr string, dnsAddr string, data []byte) (response []byte, err error) {
+func (c *ProxyClient) ExchangeDNS(srcAddr string, dnsAddr string, data []byte, timeout time.Duration) (response []byte, err error) {
 
 	//logger := log.GetLogger()
 
@@ -644,7 +641,7 @@ func (c *ProxyClient) ExchangeDNS(srcAddr string, dnsAddr string, data []byte) (
 		err = errors.New("Can not get backend proxy")
 		return
 	} else {
-		return backendProxy.ResolveDNS(buffer.Bytes()[:totalLen], 30)
+		return backendProxy.ResolveDNS(buffer.Bytes()[:totalLen], timeout)
 
 		//
 		//var conn net.PacketConn

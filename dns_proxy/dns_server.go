@@ -18,9 +18,6 @@ import (
 	"time"
 )
 
-const (
-	DNS_TIMEOUT = 5
-)
 
 type dnsResolver struct {
 	addr   string
@@ -44,6 +41,7 @@ type DnsServer struct {
 	dnsCaches *dnsCache
 	dnsCacheMux sync.Mutex
 
+	timeout time.Duration
 }
 
 type dnsCacheEntry struct {
@@ -144,6 +142,7 @@ func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingM
 	if ret.sendNum < 1 {
 		ret.sendNum = 1
 	}
+	ret.timeout = time.Duration(dnsConfig.Timeout) * time.Second
 	logger.Info("Set DNS send number", zap.Int("num", dnsConfig.SendNum))
 	return
 }
@@ -337,7 +336,7 @@ func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 			logger.Error("Pack DNS query for proxy failed", zap.String("error", err.Error()))
 			return
 		}
-		responseBytes, err := c.proxyClient.ExchangeDNS(w.RemoteAddr().String(), resolver.addr, data)
+		responseBytes, err := c.proxyClient.ExchangeDNS(w.RemoteAddr().String(), resolver.addr, data, c.timeout)
 		if err != nil {
 			logger.Error("DNS proxy resolve failed", zap.String("domain", domainName), zap.String("error", err.Error()))
 			return
@@ -379,7 +378,7 @@ func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 		w.WriteMsg(resDns)
 
 	} else {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*DNS_TIMEOUT)
+		ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 		defer cancel()
 
 		resolver := c.getResolver(false)
