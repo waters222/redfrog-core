@@ -2,6 +2,7 @@ package proxy_client
 
 import (
 	"bytes"
+	"github.com/miekg/dns"
 	"github.com/pkg/errors"
 	"github.com/weishi258/redfrog-core/common"
 	"github.com/weishi258/redfrog-core/config"
@@ -615,34 +616,31 @@ func (c *ProxyClient) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, d
 // using relay udp data to exchange dns
 
 
-func (c *ProxyClient) ExchangeDNS(srcAddr string, dnsAddr string, data []byte, timeout time.Duration) (response []byte, err error) {
+func (c *ProxyClient) ExchangeDNS(dnsAddr string, data []byte, timeout time.Duration) (response *dns.Msg, err error) {
 
-	//logger := log.GetLogger()
-
-	addrBytes, err := network.ConvertShadowSocksAddr(dnsAddr)
-	if err != nil {
-		err = errors.Wrap(err, "DNS convert to shadowsocks addr failed")
-		return
-	}
-
-	dataLen := len(data)
-	addrLen := len(addrBytes)
-	totalLen := addrLen + dataLen
-
-	buffer := c.udpBuffer_.Get()
-	defer c.udpBuffer_.Put(buffer)
-
-	copy(buffer.Bytes(), addrBytes)
-	copy(buffer.Bytes()[addrLen:], data)
-	//
-	//
-	//
 	if backendProxy := c.getBackendProxy(); backendProxy == nil {
 		err = errors.New("Can not get backend proxy")
 		return
 	} else {
-		return backendProxy.ResolveDNS(buffer.Bytes()[:totalLen], timeout)
 
+		var addrBytes []byte
+		addrBytes, err = network.ConvertShadowSocksAddr(dnsAddr)
+		if err != nil {
+			err = errors.Wrap(err, "DNS addr convert to shadowsocks addr failed")
+			return
+		}
+
+		dataLen := len(data)
+		addrLen := len(addrBytes)
+		totalLen := addrLen + dataLen
+
+		buffer := c.udpBuffer_.Get()
+		defer c.udpBuffer_.Put(buffer)
+
+		copy(buffer.Bytes(), addrBytes)
+		copy(buffer.Bytes()[addrLen:], data)
+
+		return backendProxy.ResolveDNS(addrLen, buffer.Bytes()[:totalLen], timeout)
 		//
 		//var conn net.PacketConn
 		//conn, err = net.ListenPacket("udp", "")

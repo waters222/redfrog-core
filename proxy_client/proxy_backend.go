@@ -3,8 +3,10 @@ package proxy_client
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/miekg/dns"
 	"github.com/pkg/errors"
 	"github.com/weishi258/go-shadowsocks2/core"
+	"github.com/weishi258/go-shadowsocks2/socks"
 	"github.com/weishi258/redfrog-core/common"
 	"github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/log"
@@ -238,9 +240,9 @@ func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEn
 
 
 
-func (c *proxyBackend)ResolveDNS(payload []byte, timeout time.Duration) ([]byte, error){
+func (c *proxyBackend)ResolveDNS(headerLen int, payload []byte, timeout time.Duration) (*dns.Msg, error){
 	// we use half of udp timeout for dns timeout
-	return c.dnsResolver.resolveDNS(c.udpAddr, payload, timeout)
+	return c.dnsResolver.resolveDNS(headerLen,  payload, timeout, c.udpAddr)
 }
 
 
@@ -250,8 +252,10 @@ type dnsProxyResolver struct {
 	dnsConn        net.PacketConn
 	dnsIdQueue     chan uint16
 
-	dnsQueryMap    map[uint16]chan<-[]byte
+	dnsQueryMap    map[uint16]chan<-*dns.Msg
 	dnsQueryMapMux sync.RWMutex
+	buffer    	   *common.LeakyBuffer
+
 }
 func StartDnsResolver(cipher core.Cipher) (ret *dnsProxyResolver, err error){
 	ret = &dnsProxyResolver{}
@@ -265,6 +269,9 @@ func StartDnsResolver(cipher core.Cipher) (ret *dnsProxyResolver, err error){
 	for i:=1; i < math.MaxUint16; i++{
 		ret.dnsIdQueue <- uint16(i)
 	}
+
+	ret.dnsQueryMap = make(map[uint16]chan<-*dns.Msg)
+	ret.buffer = common.NewLeakyBuffer(common.DNS_BUFFER_POOL_SIZE, common.DNS_BUFFER_SIZE)
 	go ret.processResponse()
 	return
 }
@@ -275,42 +282,66 @@ func (c *dnsProxyResolver) Stop() error{
 
 func (c *dnsProxyResolver)processResponse(){
 	logger := log.GetLogger()
-	buffer := make([]byte, common.UDP_BUFFER_SIZE)
 	// set read timeout to forever
 	c.dnsConn.SetReadDeadline(time.Time{})
 	for{
-		if _, _, err := c.dnsConn.ReadFrom(buffer); err != nil{
+		buffer := c.buffer.Get()
+		if dataLen, _, err := c.dnsConn.ReadFrom(buffer.Bytes()); err != nil{
+			c.buffer.Put(buffer)
 			logger.Error("Dns resolver read failed", zap.String("error", err.Error()))
 			return
 		}else{
-			// lets process response
-			dnsId := binary.BigEndian.Uint16(buffer)
-			c.dnsQueryMapMux.Lock()
-			// if id is exists then send signal for notification and delete this entry
-			if sig, ok := c.dnsQueryMap[dnsId]; ok{
-				sig <- buffer
-				delete(c.dnsQueryMap, dnsId)
-				c.dnsIdQueue <- dnsId
-			}
-			// put id back for re-use
-			c.dnsQueryMapMux.Unlock()
+			go func(){
+				defer c.buffer.Put(buffer)
+				// lets process response
+				// get header length
+				data := buffer.Bytes()[:dataLen]
+				//logger.Debug("read dns response", zap.Int("length", dataLen))
 
+				dstAddrBytes := socks.SplitAddr(data)
+				//logger.Debug("extract dns response", zap.Int("header length", len(dstAddrBytes)))
+				// extract raw response
+				data = data[len(dstAddrBytes):]
+				// extract dnsId
+				dnsId := binary.BigEndian.Uint16(data)
+
+				c.dnsQueryMapMux.Lock()
+				// if id is exists then send signal for notification and delete this entry
+				if sig, ok := c.dnsQueryMap[dnsId]; ok{
+					delete(c.dnsQueryMap, dnsId)
+					// quick release lock since unpack is expensive
+					c.dnsQueryMapMux.Unlock()
+					// put id back for re-use
+					c.dnsIdQueue <- dnsId
+
+					// now we unpack
+					resDns := new(dns.Msg)
+					if err = resDns.Unpack(data); err != nil {
+						logger.Error("DNS unpack for proxy resolver failed", zap.String("error", err.Error()))
+						return
+					}
+					sig <- resDns
+
+				}else{
+					c.dnsQueryMapMux.Unlock()
+				}
+			}()
 		}
 	}
 }
 
-func (c *dnsProxyResolver) resolveDNS(addr *net.UDPAddr, payload []byte, timeout time.Duration) ([]byte, error){
+func (c *dnsProxyResolver) resolveDNS(headerLen int, payload []byte, timeout time.Duration, addr *net.UDPAddr) (*dns.Msg, error){
 
 	// get un-used id from queue
 	dnsId := <- c.dnsIdQueue
 	// replace original id with new id
-	binary.BigEndian.PutUint16(payload, dnsId)
+	binary.BigEndian.PutUint16(payload[headerLen:], dnsId)
 	if _, err := c.dnsConn.WriteTo(payload, addr); err != nil{
 		c.dnsIdQueue <- dnsId
 		return nil, errors.Wrap(err, "Write to remote dns proxy failed")
 	}else{
 		// successful write so map it for later resolve response
-		sig := make(chan[]byte)
+		sig := make(chan*dns.Msg)
 		c.dnsQueryMapMux.Lock()
 		c.dnsQueryMap[dnsId] = sig
 		c.dnsQueryMapMux.Unlock()
@@ -318,8 +349,8 @@ func (c *dnsProxyResolver) resolveDNS(addr *net.UDPAddr, payload []byte, timeout
 		// set timeout for dns query
 		timeout := time.NewTimer(timeout)
 		select{
-			case responsePayload := <- sig:
-				return responsePayload, nil
+			case dnsResponse := <- sig:
+				return dnsResponse, nil
 			case <- timeout.C:
 				// remove from map and recycle id after timeout triggered
 				c.dnsQueryMapMux.Lock()

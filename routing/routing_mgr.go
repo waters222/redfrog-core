@@ -517,7 +517,7 @@ func (c *RoutingMgr) LoadPacList(domains map[string]bool, ips map[string]bool) {
 	}
 
 	if cache, err := c.deserializeRoutingTable(); err != nil {
-		logger.Error("Reading routing cache failed", zap.String("error", err.Error()))
+		logger.Info("Reading routing cache failed", zap.String("error", err.Error()))
 	} else {
 		for domain, ips := range cache.IPv4 {
 			if ips != nil && len(ips) > 0 {
