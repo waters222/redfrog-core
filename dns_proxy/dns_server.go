@@ -352,7 +352,8 @@ func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 					c.routingMgr.AddIp(name, a.(*dns.A).A)
 					logger.Debug("ipv4 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.A).A.String()), zap.Uint32("ttl", ttl))
 				} else if a.Header().Rrtype == dns.TypeAAAA {
-					shouldAddCache = true
+					// ipv6 is not fully support yet, so ignore now
+					//shouldAddCache = true
 					name := strings.TrimSuffix(a.Header().Name, ".")
 					c.routingMgr.AddIp(name, a.(*dns.AAAA).AAAA)
 					logger.Debug("ipv6 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.AAAA).AAAA.String()), zap.Uint32("ttl", ttl))
