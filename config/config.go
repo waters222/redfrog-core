@@ -140,14 +140,20 @@ type ShadowsocksConfig struct {
 	Servers []RemoteServerConfig `yaml:"servers"`
 }
 
+type DnsFilterConfig struct {
+	Enable			bool 		`yaml:"enable"`
+	WhiteLists		[]string	`yaml:"white-list"`
+	BlackLists		[]string	`yaml:"black-list"`
+}
 
 type DnsConfig struct {
-	ListenAddr    string         `yaml:"listen-addr"`
-	LocalResolver []string       `yaml:"local-resolver"`
-	ProxyResolver []string       `yaml:"proxy-resolver"`
-	SendNum       int            `yaml:"send-num"`
-	Timeout		  int			 `yaml:"timeout"`
+	ListenAddr    string         	`yaml:"listen-addr"`
+	LocalResolver []string       	`yaml:"local-resolver"`
+	ProxyResolver []string       	`yaml:"proxy-resolver"`
+	SendNum       int            	`yaml:"send-num"`
+	Timeout		  int			 	`yaml:"timeout"`
 	Cache         bool 				`yaml:"cache"`
+	filterConfig  DnsFilterConfig 	`yaml:"filter"`
 }
 
 func (c *DnsConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {

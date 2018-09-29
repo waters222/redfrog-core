@@ -33,7 +33,6 @@ const (
 type PacList struct {
 	Domains      map[string]bool
 	IPs          map[string]bool
-	lastModified time.Time
 }
 type ProxyList struct {
 	// for proxy_client
@@ -272,7 +271,7 @@ func (c *PacListMgr) CheckDomain(domain string) bool {
 }
 
 func parsePacList(path string) (ret *PacList, err error) {
-	logger := log.GetLogger()
+
 
 	file, err := os.Open(path) // For read access.
 	if err != nil {
@@ -283,12 +282,6 @@ func parsePacList(path string) (ret *PacList, err error) {
 	ret = &PacList{}
 	ret.Domains = make(map[string]bool)
 	ret.IPs = make(map[string]bool)
-	if lastModified, err := os.Stat(path); err != nil {
-		logger.Error("Get pac file stat failed", zap.String("file", path), zap.String("error", err.Error()))
-		ret.lastModified = time.Now()
-	} else {
-		ret.lastModified = lastModified.ModTime()
-	}
 
 	reader := bufio.NewReader(file)
 
@@ -306,9 +299,6 @@ func parsePacList(path string) (ret *PacList, err error) {
 				return nil, err
 			}
 		}
-	}
-	if err != nil {
-		return nil, errors.Wrapf(err, "Read config file %s failed", path)
 	}
 
 	return

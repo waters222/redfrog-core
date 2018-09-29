@@ -5,19 +5,19 @@ ignore-ip:
   - "192.168.0.0/16"
   - "172.16.0.0/12"
   - "10.0.0.0/8"
-adblock:
-  enable: true
-  ip-block: false
-  block-list:
-    - "ads.txt"
 
 dns:
   listen-addr: "192.168.0.1:53"
   proxy-resolver:
     - "8.8.8.8"
   timeout: 5
-  send-num: 2
   cache: true
+  filter:
+    enable: true
+    white-list:
+      - "white.txt"
+    black-list:
+      - "black.txt"
 pac-list:
   - "gfw-list.txt"
   - "custom-list.txt"
