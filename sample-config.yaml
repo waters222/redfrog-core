@@ -10,7 +10,7 @@ dns:
   listen-addr: "192.168.0.1:53"
   proxy-resolver:
     - "8.8.8.8"
-  timeout: 15
+  timeout: 5
   send-num: 2
   cache: true
 pac-list:

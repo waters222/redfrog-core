@@ -114,7 +114,7 @@ func (c *RemoteServerConfig) UnmarshalYAML(unmarshal func(interface{}) error) er
 	type rawConfig RemoteServerConfig
 	raw := rawConfig{
 		TcpTimeout: 120,
-		UdpTimeout: 30,
+		UdpTimeout: 60,
 	}
 
 	if err := unmarshal(&raw); err != nil {
@@ -155,7 +155,7 @@ func (c *DnsConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	raw := rawConfig{
 		SendNum : 1,
 		Cache : true,
-		Timeout: 2,
+		Timeout: 5,
 	}
 
 	if err := unmarshal(&raw); err != nil {
