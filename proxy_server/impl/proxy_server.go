@@ -3,8 +3,8 @@ package impl
 import (
 	"fmt"
 	"github.com/pkg/errors"
-	"github.com/weishi258/go-shadowsocks2/core"
-	"github.com/weishi258/go-shadowsocks2/socks"
+	"github.com/shadowsocks/go-shadowsocks2/core"
+	"github.com/shadowsocks/go-shadowsocks2/socks"
 	"github.com/weishi258/redfrog-core/common"
 	"github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/log"
