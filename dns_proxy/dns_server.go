@@ -46,6 +46,7 @@ type DnsServer struct {
 
 type dnsCacheEntry struct {
 	response *dns.Msg
+	halfTtl  time.Time
 	ttl      time.Time
 }
 
@@ -57,7 +58,7 @@ func (c *DnsServer) AddDnsCache(domain string, response *dns.Msg, ttl uint32) {
 	c.dnsCacheMux.Lock()
 	defer c.dnsCacheMux.Unlock()
 	if c.dnsCaches != nil{
-		c.dnsCaches.caches[domain] = &dnsCacheEntry{response, time.Now().Add(time.Duration(ttl) * time.Second)}
+		c.dnsCaches.caches[domain] = &dnsCacheEntry{response: response, halfTtl: time.Now().Add(time.Duration(ttl >> 1) * time.Second), ttl: time.Now().Add(time.Duration(ttl) * time.Second)}
 	}
 }
 
@@ -70,21 +71,24 @@ func (c *DnsServer) DelDnsCache(domain string) {
 
 }
 
-func (c *DnsServer) GetDnsCache(domain string) *dns.Msg {
+func (c *DnsServer) GetDnsCache(domain string) (*dns.Msg, bool) {
 	c.dnsCacheMux.Lock()
 	defer c.dnsCacheMux.Unlock()
 	if c.dnsCaches != nil{
 		if res, ok := c.dnsCaches.caches[domain]; ok {
 			log.GetLogger().Debug("Get cache hit", zap.String("domain", domain))
-			if time.Now().Before(res.ttl) {
-				return res.response
+			now := time.Now()
+			if now.Before(res.ttl) {
+				// we used halfTtl as an test to determine if we need to refresh the cache
+				// it the current time + timeout > current time we will need to refresh cache even we hit cache to minimize dns lost
+				return res.response, now.After(res.halfTtl)
 			} else {
 				delete(c.dnsCaches.caches, domain)
 			}
 		}
 	}
 
-	return nil
+	return nil, false
 }
 
 func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingMgr *routing.RoutingMgr, proxyClient *proxy_client.ProxyClient) (ret *DnsServer, err error) {
@@ -248,18 +252,18 @@ func (c *DnsServer) applyFilterChain(r *dns.Msg) *dns.Msg {
 	return nil
 }
 
-func (c *DnsServer) checkCache(r *dns.Msg) *dns.Msg {
+func (c *DnsServer) checkCache(r *dns.Msg) (*dns.Msg, bool) {
 	if c.dnsCaches != nil {
 		for _, q := range r.Question {
 			if q.Qclass == dns.ClassINET {
-				if resDns := c.GetDnsCache(strings.TrimSuffix(q.Name, ".")); resDns != nil {
+				if resDns, needRefreshCache := c.GetDnsCache(strings.TrimSuffix(q.Name, ".")); resDns != nil {
 					resDns.Id = r.Id
-					return resDns
+					return resDns, needRefreshCache
 				}
 			}
 		}
 	}
-	return nil
+	return nil, false
 }
 
 //func (c * DnsServer) WriteBackProxyResponse(w dns.ResponseWriter, domainName string, responseBytes []byte){
@@ -321,9 +325,14 @@ func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	}
 
 	if isBlacked {
-		if resDns := c.checkCache(r); resDns != nil {
+		bWriteBack := false
+		if resDns, bRefreshCache := c.checkCache(r); resDns != nil {
 			w.WriteMsg(resDns)
-			return
+			// we don't need to refresh dns
+			if !bRefreshCache{
+				return
+			}
+			bWriteBack = true
 		}
 
 		resolver := c.getResolver(true)
@@ -338,7 +347,6 @@ func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 			return
 		}
 		resDns.Id = r.Id
-
 		shouldAddCache := false
 		var ttl uint32
 		for _, a := range resDns.Answer {
@@ -351,12 +359,14 @@ func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 					name := strings.TrimSuffix(a.Header().Name, ".")
 					c.routingMgr.AddIp(name, a.(*dns.A).A)
 					logger.Debug("ipv4 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.A).A.String()), zap.Uint32("ttl", ttl))
-				} else if a.Header().Rrtype == dns.TypeAAAA {
-					// ipv6 is not fully support yet, so ignore now
-					//shouldAddCache = true
-					name := strings.TrimSuffix(a.Header().Name, ".")
-					c.routingMgr.AddIp(name, a.(*dns.AAAA).AAAA)
-					logger.Debug("ipv6 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.AAAA).AAAA.String()), zap.Uint32("ttl", ttl))
+
+				// ipv6 is not fully support yet, so ignore now
+				//} else if a.Header().Rrtype == dns.TypeAAAA {
+
+				//	//shouldAddCache = true
+				//	name := strings.TrimSuffix(a.Header().Name, ".")
+				//	c.routingMgr.AddIp(name, a.(*dns.AAAA).AAAA)
+				//	logger.Debug("ipv6 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.AAAA).AAAA.String()), zap.Uint32("ttl", ttl))
 				} else if a.Header().Rrtype == dns.TypeCNAME {
 					cname := strings.TrimSuffix(a.(*dns.CNAME).Target, ".")
 					c.pacMgr.AddDomain(cname)
@@ -369,8 +379,9 @@ func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 			c.AddDnsCache(domainName, resDns, ttl)
 		}
 
-
-		w.WriteMsg(resDns)
+		if !bWriteBack{
+			w.WriteMsg(resDns)
+		}
 
 	} else {
 		ctx, cancel := context.WithTimeout(context.Background(), c.timeout)

@@ -5,6 +5,11 @@ ignore-ip:
   - "192.168.0.0/16"
   - "172.16.0.0/12"
   - "10.0.0.0/8"
+adblock:
+  enable: true
+  ip-block: false
+  block-list:
+    - "ads.txt"
 
 dns:
   listen-addr: "192.168.0.1:53"

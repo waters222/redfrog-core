@@ -12,6 +12,17 @@
 #   ip_setting_file = YAML.load_file('.vagrant/ip_setting.yaml')
 #   ip_addr = ip_setting_file['ip']
 # end
+
+#static_mapping_script= <<-STATIC_MAPPING_SCRIPT
+
+sudo iptables -A PREROUTING -t nat -p udp --dport 500 -j DNAT --to 10.10.1.8:500
+sudo iptables -A FORWARD -p udp -d 10.10.1.8 --dport 500 -j ACCEPT
+
+sudo iptables -A PREROUTING -t nat -p udp --dport 4500 -j DNAT --to 10.10.1.8:4500
+sudo iptables -A FORWARD -p udp -d 10.10.1.8 --dport 4500 -j ACCEPT
+
+STATIC_MAPPING_SCRIPT
+
 $nat_script = <<-NAT_SCRIPT
 ulimit -Hn 1048576
 ulimit -Sn 1048576
