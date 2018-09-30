@@ -5,15 +5,19 @@ ignore-ip:
   - "192.168.0.0/16"
   - "172.16.0.0/12"
   - "10.0.0.0/8"
-interface:
-  - "enp1s0"
 dns:
-  listen-addr: "10.0.0.99:53"
-  proxy-resolver:
-    - "8.8.8.8"
   timeout: 5
-  send-num: 2
+  local-resolver:
+  - "1.1.1.1"
+  proxy-resolver:
+  - "1.1.1.1"
   cache: true
+  filter:
+    enable: true
+    white-list:
+    - "white.txt"
+    black-list:
+    - "black.txt"
 pac-list:
   - "gfw-list.txt"
   - "custom-list.txt"

@@ -5,10 +5,11 @@ ignore-ip:
   - "192.168.0.0/16"
   - "172.16.0.0/12"
   - "10.0.0.0/8"
-
 dns:
+  local-resolver:
+    - "1.1.1.1"
   proxy-resolver:
-    - "8.8.8.8"
+    - "1.1.1.1"
   timeout: 5
   cache: true
   filter:
