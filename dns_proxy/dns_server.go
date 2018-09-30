@@ -341,18 +341,17 @@ func (c *DnsServer) checkCache(r *dns.Msg) (*dns.Msg, bool) {
 
 
 
-func (c *DnsServer) resolveProxyDNS(r *dns.Msg, domainName string, isBlock bool) (resDns *dns.Msg){
+func (c *DnsServer) resolveProxyDNS(r *dns.Msg, domainName string, isBlock bool) (resDns *dns.Msg, err error){
 	logger := log.GetLogger()
 	if resolver := c.getResolver(true); resolver != nil{
-		data, err := r.Pack()
-		if err != nil {
-			logger.Error("Pack DNS query for proxy failed", zap.String("error", err.Error()))
+		var data []byte
+		if data, err = r.Pack(); err != nil {
+			err = errors.Wrap(err, "Pack DNS query for proxy failed")
 			return
 		}
 
-		resDns, err = c.proxyClient.ExchangeDNS(resolver.addr, data, c.timeout)
-		if err != nil {
-			logger.Error("DNS proxy resolve failed", zap.String("domain", domainName), zap.String("error", err.Error()))
+		if resDns, err = c.proxyClient.ExchangeDNS(resolver.addr, data, c.timeout); err != nil {
+			err = errors.Wrapf(err, "DNS proxy resolve failed, domain %s", domainName)
 			return
 		}
 		// if its blocked then we dont deal with it with normal procedure
@@ -389,28 +388,35 @@ func (c *DnsServer) resolveProxyDNS(r *dns.Msg, domainName string, isBlock bool)
 				c.AddDnsCache(domainName, resDns, ttl)
 			}
 		}
-
+	}else{
+		err = errors.New("can not get proxy dns resolver")
 	}
 	return
 }
 
-func (c *DnsServer) resolveLocalDNS(r *dns.Msg) (resDns *dns.Msg){
+func (c *DnsServer) resolveLocalDNS(r *dns.Msg) (*dns.Msg, error){
 	logger := log.GetLogger()
 	if resolver := c.getResolver(false); resolver != nil{
 		ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 		defer cancel()
 		if response, t, err := resolver.client.ExchangeContext(ctx, r, resolver.addr); err != nil {
-			logger.Debug("Can not exchange dns query for local resolver", zap.String("dns_server", resolver.addr), zap.String("error", err.Error()))
+			if len(r.Question) > 0{
+				return nil, errors.Wrapf(err, "Dns query for local resolver failed: %s", r.Question[0].String())
+			}else{
+				return nil, errors.Wrapf(err, "Dns query for local resolver failed")
+			}
+
+
 		} else {
 			logger.Debug("Dns query for local resolver successful", zap.String("dns_server", resolver.addr), zap.Duration("time", t))
-			resDns = response
+			return response, nil
 		}
+	}else{
+		return nil, errors.New("can not get local dns resolver")
 	}
-
-	return
 }
 
-func (c *DnsServer)writeResponse(w dns.ResponseWriter, r *dns.Msg, resDns *dns.Msg, isBlocked bool) []byte{
+func (c *DnsServer)writeResponse(w dns.ResponseWriter, r *dns.Msg, resDns *dns.Msg, isBlocked bool) ([]byte, error){
 	if isBlocked {
 		// well we need to block it, so replace all ip address to 0.0.0.0
 		for i := 0; i < len(resDns.Answer); i++{
@@ -431,48 +437,51 @@ func (c *DnsServer)writeResponse(w dns.ResponseWriter, r *dns.Msg, resDns *dns.M
 	// we need to pack the response since its from gateway filter
 	if w == nil{
 		if data, err := resDns.Pack(); err != nil{
-			log.GetLogger().Warn("Pack DNS response failed", zap.String("error", err.Error()))
-			return nil
+			//log.GetLogger().Warn("Pack DNS response failed", zap.String("error", err.Error()))
+			return nil, errors.Wrap(err, "Pack DNS response failed")
 		}else{
-			return data
+			return data, nil
 		}
 	}
 	// well its from standard gateway
 	w.WriteMsg(resDns)
-	return nil
+	return nil, nil
 }
 
-func (c *DnsServer) ServerDNSPacket(data []byte) []byte{
+func (c *DnsServer) ServerDNSPacket(data []byte) ([]byte, error){
 	r := new(dns.Msg)
 	if err := r.Unpack(data); err != nil{
-		log.GetLogger().Debug("pack DNS packet failed", zap.String("error", err.Error()))
-		return nil
+		return nil, errors.Wrapf(err, "pack DNS packet failed")
 	}
 	return c.processDNSRequest(nil, r)
 }
 
-func (c *DnsServer) processDNSRequest(w dns.ResponseWriter, r *dns.Msg) (data []byte) {
+func (c *DnsServer) processDNSRequest(w dns.ResponseWriter, r *dns.Msg) ([]byte, error) {
 	isBlocked := c.applyFilterChain(r)
 	log.GetLogger().Debug("Domain filter status", zap.Bool("block", isBlocked))
 	for _, q := range r.Question {
 		domainName := strings.TrimSuffix(q.Name, ".")
 		// if its black then do proxy resolve
 		if c.pacMgr.CheckDomain(domainName) {
-			resDns, bRefreshCache := c.checkCache(r)
-			if resDns != nil{
-				data = c.writeResponse(w, r, resDns, isBlocked)
+			if resDns, bRefreshCache := c.checkCache(r); resDns != nil{
+				if bRefreshCache{
+					go c.resolveProxyDNS(r, domainName, isBlocked)
+				}
+				return c.writeResponse(w, r, resDns, isBlocked)
 			}
-			if resDns = c.resolveProxyDNS(r, domainName, isBlocked); resDns != nil && !bRefreshCache{
-				data = c.writeResponse(w, r, resDns, isBlocked)
+			if resDns, err := c.resolveProxyDNS(r, domainName, isBlocked); err == nil{
+				return c.writeResponse(w, r, resDns, isBlocked)
+			}else{
+				return nil, err
 			}
-			return
 		}
 	}
 
-	if resDns := c.resolveLocalDNS(r); resDns != nil{
-		data = c.writeResponse(w, r, resDns, isBlocked)
+	if resDns, err := c.resolveLocalDNS(r); err == nil{
+		return c.writeResponse(w, r, resDns, isBlocked)
+	}else{
+		return nil, err
 	}
-	return
 }
 
 func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {

@@ -360,7 +360,7 @@ func (c *ProxyClient) handleUDP(buffer []byte, srcAddr *net.UDPAddr, dstAddr *ne
 	defer c.udpBuffer_.Put(buffer)
 	if dstAddr.Port == 53{
 		if err := c.relayDNS(srcAddr, dstAddr, buffer, dataLen); err != nil {
-			logger.Error("Relay DNS failed", zap.String("error", err.Error()))
+			logger.Info("Relay DNS failed", zap.String("error", err.Error()))
 		}else{
 			logger.Debug("Relay DNS successful", zap.String("srcAddr", srcAddr.String()),zap.String("dstAddr", dstAddr.String()))
 		}
@@ -368,7 +368,7 @@ func (c *ProxyClient) handleUDP(buffer []byte, srcAddr *net.UDPAddr, dstAddr *ne
 	}
 
 	if err := c.RelayUDPData(srcAddr, dstAddr, buffer, dataLen); err != nil {
-		logger.Error("Relay UDP failed", zap.String("error", err.Error()))
+		logger.Info("Relay UDP failed", zap.String("error", err.Error()))
 	}
 
 }
@@ -378,9 +378,12 @@ func (c *ProxyClient) relayDNS(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, data 
 		return errors.New("No backend DNS server")
 	}
 
-	response := c.dnsServer.ServerDNSPacket(data[:dataLen])
+	response, err := c.dnsServer.ServerDNSPacket(data[:dataLen])
+	if err != nil{
+		return err
+	}
 	if response == nil{
-		return errors.New("Relay DNS failed")
+		return errors.New("response dns packet is empty")
 	}
 	c.writeBackUDPData(srcAddr, dstAddr, response, 60)
 	return nil

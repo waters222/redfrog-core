@@ -23,7 +23,7 @@ const (
 )
 
 type DNSServerInterface interface {
-	ServerDNSPacket(data []byte) []byte
+	ServerDNSPacket(data []byte) ([]byte, error)
 }
 
 type ProxyClientInterface interface {
