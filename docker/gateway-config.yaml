@@ -4,7 +4,6 @@ listen-port: 9090
 ignore-ip:
 
 dns:
-  listen-addr: "0.0.0.0:53"
   proxy-resolver:
     - "127.0.0.11"
   timeout: 5

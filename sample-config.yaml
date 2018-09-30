@@ -7,7 +7,6 @@ ignore-ip:
   - "10.0.0.0/8"
 
 dns:
-  listen-addr: "192.168.0.1:53"
   proxy-resolver:
     - "8.8.8.8"
   timeout: 5

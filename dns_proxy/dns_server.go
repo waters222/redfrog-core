@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
+	"github.com/weishi258/redfrog-core/common"
 	"github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/log"
 	"github.com/weishi258/redfrog-core/pac"
-	"github.com/weishi258/redfrog-core/proxy_client"
 	"github.com/weishi258/redfrog-core/routing"
 	"go.uber.org/zap"
 	"math/rand"
@@ -27,12 +27,12 @@ type dnsResolver struct {
 type DnsServer struct {
 	routingMgr *routing.RoutingMgr
 	pacMgr     *pac.PacListMgr
-	server     *dns.Server
+	//server     *dns.Server
 
 	localResolver  []*dnsResolver
 	remoteResolver []*dnsResolver
 
-	proxyClient *proxy_client.ProxyClient
+	proxyClient common.ProxyClientInterface
 
 	dnsResolverMux sync.RWMutex
 
@@ -54,38 +54,55 @@ type dnsCacheEntry struct {
 }
 
 type dnsCache struct {
+	sync.RWMutex
 	caches  map[string]*dnsCacheEntry
 }
 
+
+
 func (c *DnsServer) AddDnsCache(domain string, response *dns.Msg, ttl uint32) {
-	c.dnsCacheMux.Lock()
-	defer c.dnsCacheMux.Unlock()
-	if c.dnsCaches != nil{
-		c.dnsCaches.caches[domain] = &dnsCacheEntry{response: response, halfTtl: time.Now().Add(time.Duration(ttl >> 1) * time.Second), ttl: time.Now().Add(time.Duration(ttl) * time.Second)}
+	c.dnsCacheMux.RLock()
+	cache := c.dnsCaches
+	c.dnsCacheMux.RUnlock()
+
+	if cache != nil{
+		cache.Lock()
+		defer cache.Unlock()
+		cache.caches[domain] = &dnsCacheEntry{response: response, halfTtl: time.Now().Add(time.Duration(ttl >> 1) * time.Second), ttl: time.Now().Add(time.Duration(ttl) * time.Second)}
 	}
 }
 
-func (c *DnsServer) GetDnsCache(domain string) (*dns.Msg, bool) {
-	c.dnsCacheMux.Lock()
-	defer c.dnsCacheMux.Unlock()
-	if c.dnsCaches != nil{
-		if res, ok := c.dnsCaches.caches[domain]; ok {
-			log.GetLogger().Debug("Get cache hit", zap.String("domain", domain))
-			now := time.Now()
-			if now.Before(res.ttl) {
-				// we used halfTtl as an test to determine if we need to refresh the cache
-				// it the current time + timeout > current time we will need to refresh cache even we hit cache to minimize dns lost
-				return res.response, now.After(res.halfTtl)
-			} else {
-				delete(c.dnsCaches.caches, domain)
-			}
-		}
-	}
 
+func (c * dnsCache)get(domain string) *dnsCacheEntry{
+	c.RLock()
+	defer c.RUnlock()
+	if res, ok := c.caches[domain]; ok{
+		return res
+	}else{
+		return nil
+	}
+}
+func (c * dnsCache)del(domain string) {
+	c.Lock()
+	defer c.Unlock()
+	delete(c.caches, domain)
+}
+
+func (c *dnsCache) GetDnsCache(domain string) (*dns.Msg, bool) {
+	entry := c.get(domain)
+	log.GetLogger().Debug("Get cache hit", zap.String("domain", domain))
+	now := time.Now()
+	if now.Before(entry.ttl) {
+		// we used halfTtl as an test to determine if we need to refresh the cache
+		// it the current time + timeout > current time we will need to refresh cache even we hit cache to minimize dns lost
+		return entry.response, now.After(entry.halfTtl)
+	} else {
+		c.del(domain)
+	}
 	return nil, false
 }
 
-func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingMgr *routing.RoutingMgr, proxyClient *proxy_client.ProxyClient) (ret *DnsServer, err error) {
+func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingMgr *routing.RoutingMgr, proxyClient common.ProxyClientInterface) (ret *DnsServer, err error) {
 	logger := log.GetLogger()
 
 	ret = &DnsServer{}
@@ -100,13 +117,13 @@ func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingM
 	}
 	ret.pacMgr = pacMgr
 
-	ret.server = &dns.Server{Addr: dnsConfig.ListenAddr, Net: "udp", Handler: ret}
-	logger.Info("Dns server starting", zap.String("addr", dnsConfig.ListenAddr))
-	go func() {
-		if err = ret.server.ListenAndServe(); err != nil {
-			logger.Error("Dns server start failed", zap.String("error", err.Error()))
-		}
-	}()
+	//ret.server = &dns.Server{Addr: dnsConfig.ListenAddr, Net: "udp", Handler: ret}
+	//logger.Info("Dns server starting", zap.String("addr", dnsConfig.ListenAddr))
+	//go func() {
+	//	if err = ret.server.ListenAndServe(); err != nil {
+	//		logger.Error("Dns server start failed", zap.String("error", err.Error()))
+	//	}
+	//}()
 
 	// create dns exchange client
 	ret.localResolver = make([]*dnsResolver, 0)
@@ -152,6 +169,8 @@ func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingM
 		}
 	}
 	//logger.Info("Set DNS send number", zap.Int("num", dnsConfig.SendNum))
+	//aa := ret.(proxy_client.DNSServerInterface)
+	ret.proxyClient.SetDNSProcessor(ret)
 	return
 }
 func (c *DnsServer)Reload(dnsConfig config.DnsConfig){
@@ -238,9 +257,12 @@ func (c *DnsServer)Reload(dnsConfig config.DnsConfig){
 func (c *DnsServer) Stop() {
 	logger := log.GetLogger()
 
-	if err := c.server.Shutdown(); err != nil {
-		logger.Error("Stop DNS server failed", zap.String("error", err.Error()))
-	}
+	c.proxyClient = nil
+	c.routingMgr = nil
+	c.pacMgr = nil
+	//if err := c.server.Shutdown(); err != nil {
+	//	logger.Error("Stop DNS server failed", zap.String("error", err.Error()))
+	//}
 
 	logger.Info("Dns server stopped")
 }
@@ -278,32 +300,37 @@ func (c *DnsServer) applyFilterChain(r *dns.Msg) bool {
 	filter := c.filter
 	c.dnsFilterMux.RUnlock()
 
-	if c.filter != nil{
-		if c.dnsCaches != nil {
-			for _, q := range r.Question {
-				if q.Qclass == dns.ClassINET {
-					domain := strings.TrimSuffix(q.Name, ".")
-					action := filter.CheckDomain(domain)
-					if action == FILTER_ACTION_PASS{
-						return true
-					}else if action == FILTER_ACTION_BLOCK{
-						return false
-					}
+	if filter != nil{
+		for _, q := range r.Question {
+			if q.Qclass == dns.ClassINET {
+				domain := strings.TrimSuffix(q.Name, ".")
+				action := filter.CheckDomain(domain)
+				if action == FILTER_ACTION_PASS{
+					//log.GetLogger().Debug("Domain filter is white", zap.String("domain", domain))
+					return false
+				}else if action == FILTER_ACTION_BLOCK{
+					//log.GetLogger().Debug("Domain filter is black", zap.String("domain", domain))
+					return true
 				}
 			}
 		}
 
 	}
 
-	return true
+	return false
 }
 
 func (c *DnsServer) checkCache(r *dns.Msg) (*dns.Msg, bool) {
-	for _, q := range r.Question {
-		if q.Qclass == dns.ClassINET {
-			domain := strings.TrimSuffix(q.Name, ".")
-			if resDns, needRefreshCache := c.GetDnsCache(domain); resDns != nil {
-				return resDns, needRefreshCache
+	c.dnsCacheMux.RLock()
+	dnsCache := c.dnsCaches
+	c.dnsCacheMux.RUnlock()
+	if dnsCache != nil{
+		for _, q := range r.Question {
+			if q.Qclass == dns.ClassINET {
+				domain := strings.TrimSuffix(q.Name, ".")
+				if resDns, needRefreshCache := dnsCache.GetDnsCache(domain); resDns != nil {
+					return resDns, needRefreshCache
+				}
 			}
 		}
 	}
@@ -320,6 +347,7 @@ func (c *DnsServer) resolveProxyDNS(r *dns.Msg, domainName string, isBlock bool)
 			logger.Error("Pack DNS query for proxy failed", zap.String("error", err.Error()))
 			return
 		}
+
 		resDns, err = c.proxyClient.ExchangeDNS(resolver.addr, data, c.timeout)
 		if err != nil {
 			logger.Error("DNS proxy resolve failed", zap.String("domain", domainName), zap.String("error", err.Error()))
@@ -380,7 +408,7 @@ func (c *DnsServer) resolveLocalDNS(r *dns.Msg) (resDns *dns.Msg){
 	return
 }
 
-func (c *DnsServer)writeResponse(w dns.ResponseWriter, r *dns.Msg, resDns *dns.Msg, isBlocked bool){
+func (c *DnsServer)writeResponse(w dns.ResponseWriter, r *dns.Msg, resDns *dns.Msg, isBlocked bool) []byte{
 	if isBlocked {
 		// well we need to block it, so replace all ip address to 0.0.0.0
 		for i := 0; i < len(resDns.Answer); i++{
@@ -398,28 +426,53 @@ func (c *DnsServer)writeResponse(w dns.ResponseWriter, r *dns.Msg, resDns *dns.M
 	}
 	// replace id with request so avoid mis-match
 	resDns.Id = r.Id
+	// we need to pack the response since its from gateway filter
+	if w == nil{
+		if data, err := resDns.Pack(); err != nil{
+			log.GetLogger().Warn("Pack DNS response failed", zap.String("error", err.Error()))
+			return nil
+		}else{
+			return data
+		}
+	}
+	// well its from standard gateway
 	w.WriteMsg(resDns)
+	return nil
 }
 
-func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
+func (c *DnsServer) ServerDNSPacket(data []byte) []byte{
+	r := new(dns.Msg)
+	if err := r.Unpack(data); err != nil{
+		log.GetLogger().Debug("pack DNS packet failed", zap.String("error", err.Error()))
+		return nil
+	}
+	return c.processDNSRequest(nil, r)
+}
+
+func (c *DnsServer) processDNSRequest(w dns.ResponseWriter, r *dns.Msg) (data []byte) {
 	isBlocked := c.applyFilterChain(r)
+	log.GetLogger().Debug("Domain filter status", zap.Bool("block", isBlocked))
 	for _, q := range r.Question {
 		domainName := strings.TrimSuffix(q.Name, ".")
 		// if its black then do proxy resolve
 		if c.pacMgr.CheckDomain(domainName) {
 			resDns, bRefreshCache := c.checkCache(r)
 			if resDns != nil{
-				c.writeResponse(w, r, resDns, isBlocked)
+				data = c.writeResponse(w, r, resDns, isBlocked)
 			}
 			if resDns = c.resolveProxyDNS(r, domainName, isBlocked); resDns != nil && !bRefreshCache{
-				c.writeResponse(w, r, resDns, isBlocked)
+				data = c.writeResponse(w, r, resDns, isBlocked)
 			}
 			return
 		}
 	}
 
 	if resDns := c.resolveLocalDNS(r); resDns != nil{
-		c.writeResponse(w, r, resDns, isBlocked)
+		data = c.writeResponse(w, r, resDns, isBlocked)
 	}
+	return
+}
 
+func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
+	c.processDNSRequest(w, r)
 }

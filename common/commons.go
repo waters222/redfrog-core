@@ -1,5 +1,10 @@
 package common
 
+import (
+	"github.com/miekg/dns"
+	"time"
+)
+
 const (
 //DOMAIN_WHITE_LIST = false
 //DOMAIN_BLACK_LIST = true
@@ -16,3 +21,12 @@ const (
 
 	CHANNEL_QUEUE_LENGTH = 5
 )
+
+type DNSServerInterface interface {
+	ServerDNSPacket(data []byte) []byte
+}
+
+type ProxyClientInterface interface {
+	ExchangeDNS(dnsAddr string, data []byte, timeout time.Duration) (response *dns.Msg, err error)
+	SetDNSProcessor(server DNSServerInterface)
+}

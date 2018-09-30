@@ -152,6 +152,7 @@ func StartService(configFile string) {
 		return
 	}
 	defer dnsServer.Stop()
+
 	status = true
 
 	logger.Info("RefFrog service is up and running")

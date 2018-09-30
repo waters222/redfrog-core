@@ -14,6 +14,7 @@ import (
 	"time"
 )
 
+
 type ProxyClient struct {
 	backends_   []*proxyBackend
 	backendMux sync.RWMutex
@@ -31,6 +32,7 @@ type ProxyClient struct {
 	udpNatMap_     *udpNatMap
 	//dnsNatMap_     *dnsNatMap
 
+	dnsServer		common.DNSServerInterface
 }
 
 //type dnsNatMap struct {
@@ -356,22 +358,39 @@ func (c *ProxyClient) startListenUDP() {
 func (c *ProxyClient) handleUDP(buffer []byte, srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, dataLen int) {
 	logger := log.GetLogger()
 	defer c.udpBuffer_.Put(buffer)
+	if dstAddr.Port == 53{
+		if err := c.relayDNS(srcAddr, dstAddr, buffer, dataLen); err != nil {
+			logger.Error("Relay DNS failed", zap.String("error", err.Error()))
+		}else{
+			logger.Debug("Relay DNS successful", zap.String("srcAddr", srcAddr.String()),zap.String("dstAddr", dstAddr.String()))
+		}
+		return
+	}
+
 	if err := c.RelayUDPData(srcAddr, dstAddr, buffer, dataLen); err != nil {
 		logger.Error("Relay UDP failed", zap.String("error", err.Error()))
 	}
+
 }
 
-//func (c * ProxyClient)ExchangeDNS(srcAddr string, dstAddr string, data []byte, dnsTimeout time.Duration) (response []byte, err error) {
-//	if backendProxy := c.getBackendProxy(true); backendProxy == nil{
-//		err = errors.New("Can not get backend proxy")
-//	}else if response, err = backendProxy.RelayDNS(srcAddr, dstAddr, data, c.udpBuffer_, dnsTimeout); err != nil {
-//		err = errors.Wrap(err, "Relay DNS query from proxy failed")
-//	}
-//	return
-//}
+func (c *ProxyClient) relayDNS(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, data []byte, dataLen int) error {
+	if c.dnsServer == nil{
+		return errors.New("No backend DNS server")
+	}
+
+	response := c.dnsServer.ServerDNSPacket(data[:dataLen])
+	if response == nil{
+		return errors.New("Relay DNS failed")
+	}
+	c.writeBackUDPData(srcAddr, dstAddr, response, 60)
+	return nil
+
+}
 
 func (c *ProxyClient) Stop() {
 	logger := log.GetLogger()
+	c.dnsServer = nil
+
 	if err := c.tcpListener.Close(); err != nil {
 		logger.Error("Close TCP listener failed", zap.String("error", err.Error()))
 	}
@@ -397,14 +416,6 @@ func (c *ProxyClient) Stop() {
 		}
 	}
 
-	//c.dnsNatMap_.Lock()
-	//defer c.dnsNatMap_.Unlock()
-	//
-	//for _, entry := range c.dnsNatMap_.entries {
-	//	if err := entry.conn.Close(); err != nil {
-	//		logger.Error("Close DNS proxy failed", zap.String("error", err.Error()))
-	//	}
-	//}
 
 	logger.Info("ProxyClient stopped")
 
@@ -615,6 +626,11 @@ func (c *ProxyClient) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, d
 //}
 
 // using relay udp data to exchange dns
+
+
+func (c *ProxyClient)SetDNSProcessor(server common.DNSServerInterface){
+	c.dnsServer = server
+}
 
 
 func (c *ProxyClient) ExchangeDNS(dnsAddr string, data []byte, timeout time.Duration) (response *dns.Msg, err error) {
