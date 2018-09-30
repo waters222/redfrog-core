@@ -3,5 +3,4 @@ www.baidu.com
 www.sina.com.cn
 www.taobao.com
 www.tmall.com
-www.jd.com
 www.qq.com

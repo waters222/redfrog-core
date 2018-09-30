@@ -61,6 +61,8 @@ services:
       - ../bin/redfrog-client:/app/redfrog-client:ro
       - ./gateway-config.yaml:/app/gateway-config.yaml:ro
       - ./pac-list.txt:/app/pac-list.txt:ro
+      - ./black.txt:/app/black.txt:ro
+      - ./white.txt:/app/white.txt:ro
       - ./scripts/gateway.sh:/app/gateway.sh:ro
     networks:
       client_net:

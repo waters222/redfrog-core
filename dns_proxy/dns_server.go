@@ -12,9 +12,9 @@ import (
 	"github.com/weishi258/redfrog-core/routing"
 	"go.uber.org/zap"
 	"math/rand"
+	"net"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -39,9 +39,12 @@ type DnsServer struct {
 
 	sendNum   int32
 	dnsCaches *dnsCache
-	dnsCacheMux sync.Mutex
+	dnsCacheMux sync.RWMutex
 
 	timeout time.Duration
+
+	filter *dnsFilter
+	dnsFilterMux sync.RWMutex
 }
 
 type dnsCacheEntry struct {
@@ -60,15 +63,6 @@ func (c *DnsServer) AddDnsCache(domain string, response *dns.Msg, ttl uint32) {
 	if c.dnsCaches != nil{
 		c.dnsCaches.caches[domain] = &dnsCacheEntry{response: response, halfTtl: time.Now().Add(time.Duration(ttl >> 1) * time.Second), ttl: time.Now().Add(time.Duration(ttl) * time.Second)}
 	}
-}
-
-func (c *DnsServer) DelDnsCache(domain string) {
-	c.dnsCacheMux.Lock()
-	defer c.dnsCacheMux.Unlock()
-	if c.dnsCaches != nil{
-		delete(c.dnsCaches.caches, domain)
-	}
-
 }
 
 func (c *DnsServer) GetDnsCache(domain string) (*dns.Msg, bool) {
@@ -148,7 +142,16 @@ func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingM
 		ret.sendNum = 1
 	}
 	ret.timeout = time.Duration(dnsConfig.Timeout) * time.Second
-	logger.Info("Set DNS send number", zap.Int("num", dnsConfig.SendNum))
+
+	// lets deal with dns filter
+	if dnsConfig.FilterConfig.Enable {
+		if ret.filter, err = LoadFilter(dnsConfig.FilterConfig.BlackLists, dnsConfig.FilterConfig.WhiteLists); err != nil{
+			logger.Error("Start DNS filter failed", zap.String("error", err.Error()))
+		}else{
+			logger.Info("Start DNS filter successful")
+		}
+	}
+	//logger.Info("Set DNS send number", zap.Int("num", dnsConfig.SendNum))
 	return
 }
 func (c *DnsServer)Reload(dnsConfig config.DnsConfig){
@@ -165,7 +168,7 @@ func (c *DnsServer)Reload(dnsConfig config.DnsConfig){
 			resolver = &dnsResolver{fmt.Sprintf("%s:53", addr), &dns.Client{Net: "udp"}}
 		}
 		localResolver = append(localResolver, resolver)
-		logger.Debug("DNS local resolver", zap.String("addr", resolver.addr))
+		logger.Info("DNS local resolver", zap.String("addr", resolver.addr))
 	}
 
 	remoteResolver := make([]*dnsResolver, 0)
@@ -177,7 +180,7 @@ func (c *DnsServer)Reload(dnsConfig config.DnsConfig){
 			resolver = &dnsResolver{fmt.Sprintf("%s:53", addr), &dns.Client{Net: "udp"}}
 		}
 		remoteResolver = append(remoteResolver, resolver)
-		logger.Debug("DNS proxy resolver", zap.String("addr", resolver.addr))
+		logger.Info("DNS proxy resolver", zap.String("addr", resolver.addr))
 	}
 	c.dnsResolverMux.Lock()
 	defer c.dnsResolverMux.Unlock()
@@ -188,7 +191,6 @@ func (c *DnsServer)Reload(dnsConfig config.DnsConfig){
 
 	// reload DNS cache
 	c.dnsCacheMux.Lock()
-	defer c.dnsCacheMux.Unlock()
 
 	if dnsConfig.Cache{
 		if c.dnsCaches == nil{
@@ -197,19 +199,38 @@ func (c *DnsServer)Reload(dnsConfig config.DnsConfig){
 		}
 	}else{
 		if c.dnsCaches != nil{
-			logger.Info("Disable DNS cache")
 			c.dnsCaches = nil
+			logger.Info("Disable DNS cache")
 		}
 
 	}
+	c.dnsCacheMux.Unlock()
+
+
+
+	c.dnsFilterMux.Lock()
+
+	if dnsConfig.FilterConfig.Enable{
+		if filter, err := LoadFilter(dnsConfig.FilterConfig.BlackLists, dnsConfig.FilterConfig.WhiteLists); err != nil{
+			logger.Error("Load DNS filter list failed", zap.String("error", err.Error()))
+		}else{
+			c.filter = filter
+			logger.Info("Reload DNS filter list successful")
+		}
+	}else{
+		c.filter = nil
+		logger.Info("Disable DNS filter")
+	}
+
+	c.dnsFilterMux.Unlock()
 
 	// reload Send Num
-	sendNum := dnsConfig.SendNum
-	if sendNum < 1{
-		sendNum = 1
-	}
-	atomic.StoreInt32(&c.sendNum, int32(sendNum))
-	logger.Info("Set DNS send number", zap.Int("num", sendNum))
+	//sendNum := dnsConfig.SendNum
+	//if sendNum < 1{
+	//	sendNum = 1
+	//}
+	//atomic.StoreInt32(&c.sendNum, int32(sendNum))
+	////logger.Info("Set DNS send number", zap.Int("num", sendNum))
 
 	logger.Info("Reload DNS config successful")
 }
@@ -229,14 +250,18 @@ func (c *DnsServer) getResolver(bIsRemote bool) *dnsResolver {
 	defer c.dnsResolverMux.RUnlock()
 	if bIsRemote {
 		length := len(c.remoteResolver)
-		if length == 1 {
+		if length == 0{
+			return nil
+		} else if length == 1 {
 			return c.remoteResolver[0]
 		} else {
 			return c.remoteResolver[rand.Int31n(int32(length))]
 		}
 	} else {
 		length := len(c.localResolver)
-		if length == 1 {
+		if length == 0{
+			return nil
+		}else if length == 1 {
 			return c.localResolver[0]
 		} else {
 			return c.localResolver[rand.Int31n(int32(length))]
@@ -244,22 +269,41 @@ func (c *DnsServer) getResolver(bIsRemote bool) *dnsResolver {
 	}
 }
 
-func (c *DnsServer) applyFilterChain(r *dns.Msg) *dns.Msg {
+func (c *DnsServer) applyFilterChain(r *dns.Msg) bool {
 	// TODO
 	// 1. Implement DNS cache filter for fast performance
 	// 2. Implement DNS block filter for ads blocking etc
 
-	return nil
+	c.dnsFilterMux.RLock()
+	filter := c.filter
+	c.dnsFilterMux.RUnlock()
+
+	if c.filter != nil{
+		if c.dnsCaches != nil {
+			for _, q := range r.Question {
+				if q.Qclass == dns.ClassINET {
+					domain := strings.TrimSuffix(q.Name, ".")
+					action := filter.CheckDomain(domain)
+					if action == FILTER_ACTION_PASS{
+						return true
+					}else if action == FILTER_ACTION_BLOCK{
+						return false
+					}
+				}
+			}
+		}
+
+	}
+
+	return true
 }
 
 func (c *DnsServer) checkCache(r *dns.Msg) (*dns.Msg, bool) {
-	if c.dnsCaches != nil {
-		for _, q := range r.Question {
-			if q.Qclass == dns.ClassINET {
-				if resDns, needRefreshCache := c.GetDnsCache(strings.TrimSuffix(q.Name, ".")); resDns != nil {
-					resDns.Id = r.Id
-					return resDns, needRefreshCache
-				}
+	for _, q := range r.Question {
+		if q.Qclass == dns.ClassINET {
+			domain := strings.TrimSuffix(q.Name, ".")
+			if resDns, needRefreshCache := c.GetDnsCache(domain); resDns != nil {
+				return resDns, needRefreshCache
 			}
 		}
 	}
@@ -267,95 +311,115 @@ func (c *DnsServer) checkCache(r *dns.Msg) (*dns.Msg, bool) {
 }
 
 
-func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
+
+func (c *DnsServer) resolveProxyDNS(r *dns.Msg, domainName string, isBlock bool) (resDns *dns.Msg){
 	logger := log.GetLogger()
-
-	if resDns := c.applyFilterChain(r); resDns != nil {
-		w.WriteMsg(resDns)
-		return
-	}
-
-	isBlacked := false
-	var domainName string
-	for _, q := range r.Question {
-		name := strings.TrimSuffix(q.Name, ".")
-		if c.pacMgr.CheckDomain(name) {
-			isBlacked = true
-			domainName = name
-			break
-		}
-	}
-
-	if isBlacked {
-		bWriteBack := false
-		if resDns, bRefreshCache := c.checkCache(r); resDns != nil {
-			w.WriteMsg(resDns)
-			// we don't need to refresh dns
-			if !bRefreshCache{
-				return
-			}
-			bWriteBack = true
-		}
-
-		resolver := c.getResolver(true)
+	if resolver := c.getResolver(true); resolver != nil{
 		data, err := r.Pack()
 		if err != nil {
 			logger.Error("Pack DNS query for proxy failed", zap.String("error", err.Error()))
 			return
 		}
-		resDns, err := c.proxyClient.ExchangeDNS(resolver.addr, data, c.timeout)
+		resDns, err = c.proxyClient.ExchangeDNS(resolver.addr, data, c.timeout)
 		if err != nil {
 			logger.Error("DNS proxy resolve failed", zap.String("domain", domainName), zap.String("error", err.Error()))
 			return
 		}
-		resDns.Id = r.Id
-		shouldAddCache := false
-		var ttl uint32
-		for _, a := range resDns.Answer {
-			if a.Header().Class == dns.ClassINET {
-				if a.Header().Ttl > ttl{
-					ttl = a.Header().Ttl
+		// if its blocked then we dont deal with it with normal procedure
+		if !isBlock {
+			hasIPv4 := false
+			var ttl uint32
+			for _, a := range resDns.Answer {
+				if a.Header().Class == dns.ClassINET {
+					if a.Header().Ttl > ttl{
+						ttl = a.Header().Ttl
+					}
+					if a.Header().Rrtype == dns.TypeA {
+						hasIPv4 = true
+						name := strings.TrimSuffix(a.Header().Name, ".")
+						c.routingMgr.AddIp(name, a.(*dns.A).A)
+						logger.Debug("ipv4 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.A).A.String()), zap.Uint32("ttl", ttl))
+
+						// ipv6 is not fully support yet, so ignore now
+						//} else if a.Header().Rrtype == dns.TypeAAAA {
+
+						//	//shouldAddCache = true
+						//	name := strings.TrimSuffix(a.Header().Name, ".")
+						//	c.routingMgr.AddIp(name, a.(*dns.AAAA).AAAA)
+						//	logger.Debug("ipv6 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.AAAA).AAAA.String()), zap.Uint32("ttl", ttl))
+					} else if a.Header().Rrtype == dns.TypeCNAME {
+						cname := strings.TrimSuffix(a.(*dns.CNAME).Target, ".")
+						c.pacMgr.AddDomain(cname)
+						logger.Debug("Add CNAME to list", zap.String("CNAME", cname))
+					}
+
 				}
-				if a.Header().Rrtype == dns.TypeA {
-					shouldAddCache = true
-					name := strings.TrimSuffix(a.Header().Name, ".")
-					c.routingMgr.AddIp(name, a.(*dns.A).A)
-					logger.Debug("ipv4 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.A).A.String()), zap.Uint32("ttl", ttl))
-
-				// ipv6 is not fully support yet, so ignore now
-				//} else if a.Header().Rrtype == dns.TypeAAAA {
-
-				//	//shouldAddCache = true
-				//	name := strings.TrimSuffix(a.Header().Name, ".")
-				//	c.routingMgr.AddIp(name, a.(*dns.AAAA).AAAA)
-				//	logger.Debug("ipv6 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.AAAA).AAAA.String()), zap.Uint32("ttl", ttl))
-				} else if a.Header().Rrtype == dns.TypeCNAME {
-					cname := strings.TrimSuffix(a.(*dns.CNAME).Target, ".")
-					c.pacMgr.AddDomain(cname)
-					logger.Debug("Add CNAME to list", zap.String("CNAME", cname))
-				}
-
+			}
+			if hasIPv4 {
+				c.AddDnsCache(domainName, resDns, ttl)
 			}
 		}
-		if shouldAddCache && c.dnsCaches != nil {
-			c.AddDnsCache(domainName, resDns, ttl)
-		}
 
-		if !bWriteBack{
-			w.WriteMsg(resDns)
-		}
+	}
+	return
+}
 
-	} else {
+func (c *DnsServer) resolveLocalDNS(r *dns.Msg) (resDns *dns.Msg){
+	logger := log.GetLogger()
+	if resolver := c.getResolver(false); resolver != nil{
 		ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 		defer cancel()
-
-		resolver := c.getResolver(false)
 		if response, t, err := resolver.client.ExchangeContext(ctx, r, resolver.addr); err != nil {
-			logger.Debug("Can not exchange dns query for local resolver", zap.String("addr", resolver.addr), zap.String("error", err.Error()))
+			logger.Debug("Can not exchange dns query for local resolver", zap.String("dns_server", resolver.addr), zap.String("error", err.Error()))
 		} else {
-			logger.Debug("Dns query for local resolver successful", zap.String("addr", resolver.addr), zap.Duration("time", t))
-			w.WriteMsg(response)
+			logger.Debug("Dns query for local resolver successful", zap.String("dns_server", resolver.addr), zap.Duration("time", t))
+			resDns = response
 		}
+	}
+
+	return
+}
+
+func (c *DnsServer)writeResponse(w dns.ResponseWriter, r *dns.Msg, resDns *dns.Msg, isBlocked bool){
+	if isBlocked {
+		// well we need to block it, so replace all ip address to 0.0.0.0
+		for i := 0; i < len(resDns.Answer); i++{
+			if resDns.Answer[i].Header().Class == dns.ClassINET{
+				rType := resDns.Answer[i].Header().Rrtype
+				if rType == dns.TypeA{
+					resDns.Answer[i].(*dns.A).A = net.IPv4zero
+				}else if rType == dns.TypeAAAA{
+					resDns.Answer[i].(*dns.AAAA).AAAA = net.IPv6zero
+				}else if rType == dns.TypeCNAME{
+					resDns.Answer[i].(*dns.CNAME).Target = ""
+				}
+			}
+		}
+	}
+	// replace id with request so avoid mis-match
+	resDns.Id = r.Id
+	w.WriteMsg(resDns)
+}
+
+func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
+	isBlocked := c.applyFilterChain(r)
+	for _, q := range r.Question {
+		domainName := strings.TrimSuffix(q.Name, ".")
+		// if its black then do proxy resolve
+		if c.pacMgr.CheckDomain(domainName) {
+			resDns, bRefreshCache := c.checkCache(r)
+			if resDns != nil{
+				c.writeResponse(w, r, resDns, isBlocked)
+			}
+			if resDns = c.resolveProxyDNS(r, domainName, isBlocked); resDns != nil && !bRefreshCache{
+				c.writeResponse(w, r, resDns, isBlocked)
+			}
+			return
+		}
+	}
+
+	if resDns := c.resolveLocalDNS(r); resDns != nil{
+		c.writeResponse(w, r, resDns, isBlocked)
 	}
 
 }

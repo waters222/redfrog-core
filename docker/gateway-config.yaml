@@ -8,8 +8,13 @@ dns:
   proxy-resolver:
     - "127.0.0.11"
   timeout: 5
-  send-num: 2
   cache: false
+  filter:
+    enable: true
+    white-list:
+    - "white.txt"
+    black-list:
+    - "black.txt"
 pac-list:
   - "pac-list.txt"
 shadowsocks:

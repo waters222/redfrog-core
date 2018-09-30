@@ -153,7 +153,7 @@ type DnsConfig struct {
 	SendNum       int            	`yaml:"send-num"`
 	Timeout		  int			 	`yaml:"timeout"`
 	Cache         bool 				`yaml:"cache"`
-	filterConfig  DnsFilterConfig 	`yaml:"filter"`
+	FilterConfig  DnsFilterConfig 	`yaml:"filter"`
 }
 
 func (c *DnsConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
