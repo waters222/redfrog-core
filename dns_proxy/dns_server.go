@@ -89,16 +89,18 @@ func (c * dnsCache)del(domain string) {
 }
 
 func (c *dnsCache) GetDnsCache(domain string) (*dns.Msg, bool) {
-	entry := c.get(domain)
-	log.GetLogger().Debug("Get cache hit", zap.String("domain", domain))
-	now := time.Now()
-	if now.Before(entry.ttl) {
-		// we used halfTtl as an test to determine if we need to refresh the cache
-		// it the current time + timeout > current time we will need to refresh cache even we hit cache to minimize dns lost
-		return entry.response, now.After(entry.halfTtl)
-	} else {
-		c.del(domain)
+	if entry := c.get(domain); entry != nil{
+		log.GetLogger().Debug("Get cache hit", zap.String("domain", domain))
+		now := time.Now()
+		if now.Before(entry.ttl) {
+			// we used halfTtl as an test to determine if we need to refresh the cache
+			// it the current time + timeout > current time we will need to refresh cache even we hit cache to minimize dns lost
+			return entry.response, now.After(entry.halfTtl)
+		} else {
+			c.del(domain)
+		}
 	}
+
 	return nil, false
 }
 

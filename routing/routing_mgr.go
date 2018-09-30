@@ -119,18 +119,19 @@ func (c *RoutingMgr) createRedFrogChain(isIPv6 bool) (err error) {
 	}
 
 
-	if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "udp", "--dport", "53", "-j", CHAIN_TPROXY); err != nil {
-		err = errors.Wrap(err, "Append into PREROUTING chain for DNS filter failed")
-		return
-	}
-
 
 	if isIPv6{
 		// add dns filter
-		if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", "::1", "-j", "RETURN"); err != nil {
+		if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", "::1/128", "-j", "RETURN"); err != nil {
 			err = errors.Wrap(err, "Append into PREROUTING chain to avoid loop-back addr failed")
 			return
 		}
+
+		if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "udp", "--dport", "53", "-j", CHAIN_TPROXY); err != nil {
+			err = errors.Wrap(err, "Append into PREROUTING chain for DNS filter failed")
+			return
+		}
+
 
 		for _, ipNet := range c.ignoreIPNet {
 			if ipNet.IP.To4() == nil {
@@ -142,10 +143,16 @@ func (c *RoutingMgr) createRedFrogChain(isIPv6 bool) (err error) {
 		}
 
 	}else{
-		if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", "127.0.0.1", "-j", "RETURN"); err != nil {
+		if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", "127.0.0.1/24", "-j", "RETURN"); err != nil {
 			err = errors.Wrap(err, "Append into PREROUTING chain failed to avoid loop-back addr ")
 			return
 		}
+		if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "udp", "--dport", "53", "-j", CHAIN_TPROXY); err != nil {
+			err = errors.Wrap(err, "Append into PREROUTING chain for DNS filter failed")
+			return
+		}
+
+
 		for _, ipNet := range c.ignoreIPNet {
 			if ipNet.IP.To4() != nil {
 				if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ipNet.String(), "-j", "RETURN"); err != nil {
