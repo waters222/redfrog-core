@@ -147,6 +147,7 @@ type DnsFilterConfig struct {
 }
 
 type DnsConfig struct {
+	ListenAddr     string           `yaml:"listen-addr"`
 	LocalResolver []string       	`yaml:"local-resolver"`
 	ProxyResolver []string       	`yaml:"proxy-resolver"`
 	SendNum       int            	`yaml:"send-num"`

@@ -27,7 +27,7 @@ type dnsResolver struct {
 type DnsServer struct {
 	routingMgr *routing.RoutingMgr
 	pacMgr     *pac.PacListMgr
-	//server     *dns.Server
+	server     *dns.Server
 
 	localResolver  []*dnsResolver
 	remoteResolver []*dnsResolver
@@ -119,13 +119,13 @@ func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingM
 	}
 	ret.pacMgr = pacMgr
 
-	//ret.server = &dns.Server{Addr: dnsConfig.ListenAddr, Net: "udp", Handler: ret}
-	//logger.Info("Dns server starting", zap.String("addr", dnsConfig.ListenAddr))
-	//go func() {
-	//	if err = ret.server.ListenAndServe(); err != nil {
-	//		logger.Error("Dns server start failed", zap.String("error", err.Error()))
-	//	}
-	//}()
+	ret.server = &dns.Server{Addr: dnsConfig.ListenAddr, Net: "udp", Handler: ret}
+	logger.Info("Dns server starting", zap.String("addr", dnsConfig.ListenAddr))
+	go func() {
+		if err = ret.server.ListenAndServe(); err != nil {
+			logger.Error("Dns server start failed", zap.String("error", err.Error()))
+		}
+	}()
 
 	// create dns exchange client
 	ret.localResolver = make([]*dnsResolver, 0)
@@ -262,9 +262,9 @@ func (c *DnsServer) Stop() {
 	c.proxyClient = nil
 	c.routingMgr = nil
 	c.pacMgr = nil
-	//if err := c.server.Shutdown(); err != nil {
-	//	logger.Error("Stop DNS server failed", zap.String("error", err.Error()))
-	//}
+	if err := c.server.Shutdown(); err != nil {
+		logger.Error("Stop DNS server failed", zap.String("error", err.Error()))
+	}
 
 	logger.Info("Dns server stopped")
 }
