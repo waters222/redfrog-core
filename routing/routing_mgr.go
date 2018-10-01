@@ -341,20 +341,20 @@ func (c *RoutingMgr) isChanged(domain string, ip net.IP, isIPv6 bool) bool {
 	ipMap[domain] = ips
 	return true
 }
-func (c *RoutingMgr) AddIp(domain string, ip net.IP) (err error) {
+func (c *RoutingMgr) AddIp(domain string, ip net.IP) error {
 	isIPv6 := ip.To4() == nil
 	if c.isChanged(domain, ip, isIPv6) {
 		if isIPv6 {
-			if errAdd := c.routingTableAddIPV6(ip); errAdd != nil {
+			if err := c.routingTableAddIPV6(ip); err != nil {
 				log.GetLogger().Error("Add IP to routing table failed", zap.String("ip", ip.String()), zap.String("error", err.Error()))
 			}
 		} else {
-			if errAdd := c.routingTableAddIPV4(ip); errAdd != nil {
+			if err := c.routingTableAddIPV4(ip); err != nil {
 				log.GetLogger().Error("Add IP to routing table failed", zap.String("ip", ip.String()), zap.String("error", err.Error()))
 			}
 		}
 	}
-	return
+	return nil
 }
 
 func (c *RoutingMgr) FlushRoutingTable() (err error) {
@@ -596,43 +596,39 @@ func composeIPList(ips map[string]bool) string {
 	return strings.Join(temp, ",")
 }
 
-func (c *RoutingMgr) routingTableAddIPV4(ip net.IP) (err error) {
+func (c *RoutingMgr) routingTableAddIPV4(ip net.IP)  error {
 	logger := log.GetLogger()
-	if err = c.ip4tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
-		logger.Error("Routing table add IPv4 failed", zap.String("ip", ip.String()), zap.String("error", err.Error()))
-		return
+	if err := c.ip4tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
+		return errors.Wrap(err, "Routing table add IPv4 failed")
 	}
 	logger.Debug("Routing table add IPv4 successful", zap.String("ip", ip.String()))
-	return
+	return nil
 }
-func (c *RoutingMgr) routingTableAddIPV6(ip net.IP) (err error) {
+func (c *RoutingMgr) routingTableAddIPV6(ip net.IP) error {
 	logger := log.GetLogger()
-	if err = c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
-		logger.Error("Routing table add IPv6 failed", zap.String("ip", ip.String()), zap.String("error", err.Error()))
-		return
+	if err := c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
+		return errors.Wrap(err, "Routing table add IPv6 failed")
 	}
 	logger.Debug("Routing table add IPv6 successful", zap.String("ip", ip.String()))
-	return
+	return nil
 }
 
-func (c *RoutingMgr) routingTableDelIPv4(ip net.IP) (err error) {
+func (c *RoutingMgr) routingTableDelIPv4(ip net.IP) error {
 	logger := log.GetLogger()
 
-	if err = c.ip4tbl.Delete(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
-		logger.Error("Routing table del IPv4 failed", zap.String("ip", ip.String()), zap.String("error", err.Error()))
-		return
+	if err := c.ip4tbl.Delete(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
+		return errors.Wrap(err,"Routing table del IPv4 failed")
 	}
 	logger.Debug("Routing table del IPv4 successful", zap.String("ip", ip.String()))
-	return
+	return nil
 }
 
-func (c *RoutingMgr) routingTableDelIPv6(ip net.IP) (err error) {
+func (c *RoutingMgr) routingTableDelIPv6(ip net.IP) error {
 	logger := log.GetLogger()
 
-	if err = c.ip6tbl.Delete(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
-		logger.Error("Routing table del IPv6 failed", zap.String("ip", ip.String()), zap.String("error", err.Error()))
-		return
+	if err := c.ip6tbl.Delete(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
+		return errors.Wrap(err, "Routing table del IPv6 failed")
 	}
 	logger.Debug("Routing table del IPv6 successful", zap.String("ip", ip.String()))
-	return
+	return nil
 }
