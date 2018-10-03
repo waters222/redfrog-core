@@ -152,10 +152,10 @@ func (c *RoutingMgr) createRedFrogChain(isIPv6 bool) (err error) {
 		}
 	}
 
-	//if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "udp", "--dport", "53", "-j", CHAIN_TPROXY); err != nil {
-	//	err = errors.Wrap(err, "Append into PREROUTING chain for DNS filter failed")
-	//	return
-	//}
+	if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "udp", "--dport", "53", "-j", CHAIN_TPROXY); err != nil {
+		err = errors.Wrap(err, "Append into PREROUTING chain for DNS filter failed")
+		return
+	}
 	return
 }
 
