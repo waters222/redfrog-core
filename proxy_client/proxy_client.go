@@ -358,14 +358,14 @@ func (c *ProxyClient) startListenUDP() {
 func (c *ProxyClient) handleUDP(buffer []byte, srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, dataLen int) {
 	logger := log.GetLogger()
 	defer c.udpBuffer_.Put(buffer)
-	if dstAddr.Port == 53{
-		if err := c.relayDNS(srcAddr, dstAddr, buffer, dataLen); err != nil {
-			logger.Info("Relay DNS failed", zap.String("error", err.Error()))
-		}else{
-			logger.Debug("Relay DNS successful", zap.String("srcAddr", srcAddr.String()),zap.String("dstAddr", dstAddr.String()))
-		}
-		return
-	}
+	//if dstAddr.Port == 53{
+	//	if err := c.relayDNS(srcAddr, dstAddr, buffer, dataLen); err != nil {
+	//		logger.Info("Relay DNS failed", zap.String("error", err.Error()))
+	//	}else{
+	//		logger.Debug("Relay DNS successful", zap.String("srcAddr", srcAddr.String()),zap.String("dstAddr", dstAddr.String()))
+	//	}
+	//	return
+	//}
 
 	if err := c.RelayUDPData(srcAddr, dstAddr, buffer, dataLen); err != nil {
 		logger.Info("Relay UDP failed", zap.String("error", err.Error()))
