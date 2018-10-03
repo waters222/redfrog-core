@@ -1,0 +1,2 @@
+spclient.wg.spotify.com
+apresolve.spotify.com
