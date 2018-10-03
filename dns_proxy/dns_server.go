@@ -428,6 +428,9 @@ func (c *DnsServer)writeResponse(w dns.ResponseWriter, r *dns.Msg, resDns *dns.M
 					resDns.Answer[i].(*dns.AAAA).AAAA = net.IPv6zero
 				}else if rType == dns.TypeCNAME{
 					resDns.Answer[i].(*dns.CNAME).Target = ""
+				}else if rType == dns.TypeSOA{
+					resDns.Answer[i].(*dns.SOA).Ns = ""
+					resDns.Answer[i].(*dns.SOA).Mbox=""
 				}
 			}
 		}
