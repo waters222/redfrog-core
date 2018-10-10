@@ -2,8 +2,8 @@ packet-mask: "0x1/0x1"
 routing-table: 100
 listen-port: 9090
 ignore-ip:
-
 dns:
+  listen-addr: "0.0.0.0:53"
   proxy-resolver:
     - "127.0.0.11"
   timeout: 5

@@ -6,6 +6,7 @@ ignore-ip:
   - "172.16.0.0/12"
   - "10.0.0.0/8"
 dns:
+  listen-addr: "0.0.0.0:53"
   local-resolver:
     - "1.1.1.1"
   proxy-resolver:
@@ -44,7 +45,7 @@ shadowsocks:
         dscp: 0
         nocomp: false
         keep-alive-interval: 10
-        keep-alive-timeout: 120
+        keep-alive-timeout: 30
         sock-buf : 4194304
     - enable: true
       remote-server: "149.28.13.248:20000"
@@ -67,6 +68,6 @@ shadowsocks:
         dscp: 0
         nocomp: false
         keep-alive-interval: 10
-        keep-alive-timeout: 120
+        keep-alive-timeout: 30
         sock-buf : 4194304
 
