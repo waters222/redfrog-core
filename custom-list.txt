@@ -1,3 +1,5 @@
+media-amazon.com
+ssl-images-amazon.com
 dropbox.com
 netflix.com
 cmake.org

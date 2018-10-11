@@ -451,12 +451,12 @@ func (c *DnsServer)writeResponse(w dns.ResponseWriter, r *dns.Msg, resDns *dns.M
 	return nil, nil
 }
 
-func (c *DnsServer) ServerDNSPacket(data []byte) ([]byte, error){
-	r := new(dns.Msg)
-	if err := r.Unpack(data); err != nil{
-		return nil, errors.Wrapf(err, "pack DNS packet failed")
-	}
-	return c.processDNSRequest(nil, r)
+func (c *DnsServer) ServerDNSPacket(msg *dns.Msg) ([]byte, error){
+	//r := new(dns.Msg)
+	//if err := r.Unpack(data); err != nil{
+	//	return nil, errors.Wrapf(err, "unpack DNS packet failed")
+	//}
+	return c.processDNSRequest(nil, msg)
 }
 
 func (c *DnsServer) processDNSRequest(w dns.ResponseWriter, r *dns.Msg) ([]byte, error) {

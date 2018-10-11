@@ -348,6 +348,7 @@ func (c *ProxyClient) startListenUDP() {
 				logger.Error("Failed to extract original dst from udp", zap.String("error", err.Error()))
 			} else {
 				go c.handleUDP(buffer, srcAddr, dstAddr, dataLen)
+
 			}
 			c.udpOOBBuffer_.Put(oob)
 		}
@@ -359,26 +360,28 @@ func (c *ProxyClient) handleUDP(buffer []byte, srcAddr *net.UDPAddr, dstAddr *ne
 	logger := log.GetLogger()
 	defer c.udpBuffer_.Put(buffer)
 	if dstAddr.Port == 53{
-		if err := c.relayDNS(srcAddr, dstAddr, buffer, dataLen); err != nil {
-			logger.Info("Relay DNS failed", zap.String("error", err.Error()))
-		}else{
-			logger.Debug("Relay DNS successful", zap.String("srcAddr", srcAddr.String()),zap.String("dstAddr", dstAddr.String()))
+		msg := new(dns.Msg)
+		if err := msg.Unpack(buffer[:dataLen]); err != nil{
+			logger.Error("unpack DNS packet failed", zap.String("src", srcAddr.String()), zap.String("DNS server", dstAddr.String()), zap.Int("udp size", dataLen),zap.String("error", err.Error()))
+			return
 		}
-		return
+		if err := c.relayDNS(srcAddr, dstAddr, msg); err != nil {
+			logger.Info("Relay DNS failed", zap.String("error", err.Error()))
+			return
+		}
+		logger.Debug("Relay DNS successful", zap.String("srcAddr", srcAddr.String()),zap.String("dstAddr", dstAddr.String()))
+	}else{
+		if err := c.RelayUDPData(srcAddr, dstAddr, buffer, dataLen); err != nil {
+			logger.Info("Relay UDP failed", zap.String("error", err.Error()))
+		}
 	}
-
-	if err := c.RelayUDPData(srcAddr, dstAddr, buffer, dataLen); err != nil {
-		logger.Info("Relay UDP failed", zap.String("error", err.Error()))
-	}
-
 }
 
-func (c *ProxyClient) relayDNS(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, data []byte, dataLen int) error {
+func (c *ProxyClient) relayDNS(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, msg *dns.Msg) error {
 	if c.dnsServer == nil{
 		return errors.New("No backend DNS server")
 	}
-
-	response, err := c.dnsServer.ServerDNSPacket(data[:dataLen])
+	response, err := c.dnsServer.ServerDNSPacket(msg)
 	if err != nil{
 		return err
 	}
