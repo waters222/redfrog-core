@@ -145,6 +145,10 @@ func (c *RoutingMgr) createRedFrogChain(isIPv6 bool) (err error) {
 		err = errors.Wrap(err, "Append into RED_FROG chain to avoid double tap for TProxy")
 		return
 	}
+	if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "udp", "-m", "socket", "-j", CHAIN_DIVERT); err != nil {
+		err = errors.Wrap(err, "Append into RED_FROG chain to avoid double tap for TProxy")
+		return
+	}
 
 	if isIPv6{
 		if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", "::1/128", "-j", "RETURN"); err != nil {
@@ -193,7 +197,7 @@ func (c *RoutingMgr) deletePrerouting(iptbl *iptables.IPTables) error{
 		for _, rule := range rules{
 			stubs := strings.Split(rule, " ")
 			length := len(stubs)
-			if length > 4{
+			if length >= 4{
 				if stubs[length - 1] == CHAIN_RED_FROG && stubs[length - 2] == "-j"{
 					if err = iptbl.Delete(TABLE_MANGLE, CHAIN_PREROUTING, stubs[2:]...); err != nil{
 						err = errors.Wrapf(err, "Delete rule from chain %s -> %s: %v failed", TABLE_MANGLE, CHAIN_PREROUTING, stubs[2:])
@@ -246,15 +250,16 @@ func (c *RoutingMgr) clearIPTables(iptbl *iptables.IPTables) {
 		logger.Error("Delete rule from chain failed", zap.String("table", TABLE_MANGLE), zap.String("chain", CHAIN_PREROUTING), zap.String("error", err.Error()))
 	}
 
-	if err := iptbl.FlushChain(TABLE_MANGLE, CHAIN_DIVERT); err != nil {
-		logger.Error("Flush chain failed", zap.String("chain", CHAIN_DIVERT), zap.String("error", err.Error()))
-	}else if err = iptbl.DeleteChain(TABLE_MANGLE, CHAIN_DIVERT); err != nil{
-		logger.Error("Delete chain failed", zap.String("table", TABLE_MANGLE), zap.String("chain", CHAIN_DIVERT), zap.String("error", err.Error()))
-	}
+
 	if err := iptbl.FlushChain(TABLE_MANGLE, CHAIN_RED_FROG); err != nil {
 		logger.Error("Flush chain failed", zap.String("chain", CHAIN_RED_FROG), zap.String("error", err.Error()))
 	}else if err = iptbl.DeleteChain(TABLE_MANGLE, CHAIN_RED_FROG); err != nil{
 		logger.Error("Delete chain failed", zap.String("table", TABLE_MANGLE), zap.String("chain", CHAIN_RED_FROG), zap.String("error", err.Error()))
+	}
+	if err := iptbl.FlushChain(TABLE_MANGLE, CHAIN_DIVERT); err != nil {
+		logger.Error("Flush chain failed", zap.String("chain", CHAIN_DIVERT), zap.String("error", err.Error()))
+	}else if err = iptbl.DeleteChain(TABLE_MANGLE, CHAIN_DIVERT); err != nil{
+		logger.Error("Delete chain failed", zap.String("table", TABLE_MANGLE), zap.String("chain", CHAIN_DIVERT), zap.String("error", err.Error()))
 	}
 	if err := iptbl.FlushChain(TABLE_MANGLE, CHAIN_TPROXY); err != nil {
 		logger.Error("Flush chain failed", zap.String("chain", CHAIN_TPROXY), zap.String("error", err.Error()))
