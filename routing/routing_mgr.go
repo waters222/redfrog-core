@@ -150,7 +150,7 @@ func (c *RoutingMgr) createRedFrogChain(isIPv6 bool) (err error) {
 		return
 	}
 
-	if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED", "-j", "RETURN"); err != nil {
+	if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-m", "conntrack", "--ctstate", "ESTABLISHED", "-j", "RETURN"); err != nil {
 		err = errors.Wrap(err, "Append into RED_FROG chain to return established connection")
 		return
 	}
