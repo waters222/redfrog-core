@@ -155,7 +155,7 @@ func (c *ProxyServer) handleTCP(conn net.Conn) {
 
 	conn.(*net.TCPConn).SetKeepAlive(true)
 	conn = c.cipher.StreamConn(conn)
-	conn.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
+	//conn.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
 
 	dstAddr, err := socks.ReadAddr(conn)
 	if err != nil {
@@ -169,7 +169,7 @@ func (c *ProxyServer) handleTCP(conn net.Conn) {
 	}
 	//logger.Debug("tcp dial remote", zap.String("addr", dstAddr.String()))
 	defer remoteConn.Close()
-	remoteConn.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
+	//remoteConn.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
 	remoteConn.(*net.TCPConn).SetKeepAlive(true)
 
 	// starting relay data

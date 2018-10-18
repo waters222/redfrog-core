@@ -124,8 +124,8 @@ func (c *proxyBackend) createTCPConn() (conn net.Conn, err error) {
 func (c *proxyBackend) relayKCPData(srcConn net.Conn, kcpConn *smux.Stream, header []byte) (inboundSize int64, outboundSize int64, err error) {
 	defer kcpConn.Close()
 
-	srcConn.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
-	kcpConn.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
+	//srcConn.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
+	//kcpConn.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
 
 	if _, err = kcpConn.Write(header); err != nil {
 		log.GetLogger().Error(RELAY_TCP_RETRY, zap.String("err", err.Error()))
@@ -190,8 +190,8 @@ func (c *proxyBackend) RelayTCPData(src net.Conn) (inboundSize int64, outboundSi
 	defer dst.Close()
 
 	// set deadline timeout
-	dst.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
-	src.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
+	//dst.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
+	//src.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
 
 	if _, err = dst.Write(originDst); err != nil {
 		err = errors.Wrap(err, "Write to remote server failed")
