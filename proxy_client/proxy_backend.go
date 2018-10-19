@@ -170,15 +170,15 @@ func (c *proxyBackend) RelayTCPData(src net.Conn) (inboundSize int64, outboundSi
 		// try to get an KCP steam connection, if not fall back to default proxy mode
 		var kcpConn *smux.Stream
 		if kcpConn, err = c.kcpBackend.GetKcpConn(); err == nil {
+			logger := log.GetLogger()
 			if inboundSize, outboundSize, err = c.relayKCPData(src, kcpConn, originDst); err != nil {
-				if err.Error() != RELAY_TCP_RETRY {
-					log.GetLogger().Debug("Relay Kcp finished", zap.Int64("inbound", inboundSize), zap.Int64("outbound", outboundSize), zap.String("error", err.Error()))
+				if err.Error() == RELAY_TCP_RETRY{
+					logger.Debug("Replay Kcp failed", zap.String("error", err.Error()))
 					return
 				}
-			} else {
-				log.GetLogger().Debug("Relay Kcp finished", zap.Int64("inbound", inboundSize), zap.Int64("outbound", outboundSize))
-				return
 			}
+			logger.Debug("Relay Kcp finished", zap.Int64("inbound", inboundSize), zap.Int64("outbound", outboundSize))
+			return inboundSize, outboundSize, nil
 		}
 	}
 
