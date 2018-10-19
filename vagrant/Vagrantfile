@@ -35,12 +35,10 @@ export INTERFACE_IN=enp1s0
 export INTERFACE_OUT=enp1s0
 
 sudo iptables -t filter --flush INPUT
-sudo iptables -t filter -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-sudo iptables -t filter -A INPUT -p udp --dport 53 -j ACCEPT
+sudo iptables -t filter -A INPUT -j ACCEPT
 
 sudo iptables -t filter --flush FORWARD
 sudo iptables -t filter -A FORWARD -i $INTERFACE_IN -o $INTERFACE_OUT -j ACCEPT
-sudo iptables -t filter -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 sudo iptables -t nat --flush POSTROUTING
 sudo iptables -t nat -A POSTROUTING -o $INTERFACE_OUT   -j MASQUERADE
@@ -52,12 +50,10 @@ sudo ip route add local 0.0.0.0/0 dev lo table 100
 sudo sysctl -w net.ipv6.conf.all.forwarding=1
 
 sudo ip6tables -t filter --flush INPUT
-sudo ip6tables -t filter -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-sudo ip6tables -t filter -A INPUT -p udp --dport 53 -j ACCEPT
+sudo ip6tables -t filter -A INPUT -j ACCEPT
 
 sudo ip6tables -t filter --flush FORWARD
 sudo ip6tables -t filter -A FORWARD -i $INTERFACE_IN -o $INTERFACE_OUT -j ACCEPT
-sudo ip6tables -t filter -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 sudo ip6tables -t nat --flush POSTROUTING
 sudo ip6tables -t nat -A POSTROUTING -o $INTERFACE_OUT   -j MASQUERADE

@@ -1,0 +1,10 @@
+[Unit]
+After=network.target
+
+[Service]
+ExecStart=/home/rock64/redfrog/redfrog-client-arm64 -c /home/rock64/redfrog/prod-config.yaml
+Type=simple
+User=root
+
+[Install]
+WantedBy=default.target
