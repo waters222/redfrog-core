@@ -15,6 +15,10 @@ import (
 )
 
 
+const(
+	DNS_ADDR_MOCK_TIMEOUT = 60
+)
+
 type ProxyClient struct {
 	backends_   []*proxyBackend
 	backendMux sync.RWMutex
@@ -335,6 +339,7 @@ func (c *ProxyClient) startListenUDP() {
 	for {
 		buffer := c.udpBuffer_.Get()
 		oob := c.udpOOBBuffer_.Get()
+		//logger.Debug("start intercept udp")
 		if dataLen, oobLen, _, srcAddr, err := c.udpListener.ReadMsgUDP(buffer, oob); err != nil {
 			c.udpBuffer_.Put(buffer)
 			c.udpOOBBuffer_.Put(oob)
@@ -343,7 +348,7 @@ func (c *ProxyClient) startListenUDP() {
 				logger.Debug("Read from udp failed", zap.String("error", err.Error()))
 			}
 		} else {
-
+			//logger.Debug("got one udp")
 			if dstAddr, err := network.ExtractOrigDstFromUDP(oobLen, oob); err != nil {
 				logger.Error("Failed to extract original dst from udp", zap.String("error", err.Error()))
 			} else {
@@ -359,6 +364,7 @@ func (c *ProxyClient) startListenUDP() {
 func (c *ProxyClient) handleUDP(buffer []byte, srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, dataLen int) {
 	logger := log.GetLogger()
 	defer c.udpBuffer_.Put(buffer)
+	//logger.Debug("handleUDP", zap.String("src", srcAddr.String()), zap.String("dst", dstAddr.String()))
 	if dstAddr.Port == 53{
 		msg := new(dns.Msg)
 		if err := msg.Unpack(buffer[:dataLen]); err != nil{
@@ -388,7 +394,7 @@ func (c *ProxyClient) relayDNS(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, msg *
 	if response == nil{
 		return errors.New("response dns packet is empty")
 	}
-	c.writeBackUDPData(srcAddr, dstAddr, response, 60)
+	c.writeBackUDPData(srcAddr, dstAddr, response, time.Duration(DNS_ADDR_MOCK_TIMEOUT) * time.Second)
 	return nil
 
 }
@@ -427,6 +433,42 @@ func (c *ProxyClient) Stop() {
 
 }
 
+
+func (c *ProxyClient) doWriteBackUDPData(srcConn *net.UDPConn, chanKey string, udpTimeout time.Duration, sendChannel chan dstMapChannel, dstAddr *net.UDPAddr){
+	logger := log.GetLogger()
+	defer func(){
+		logger.Debug("UDP bind close", zap.String("addr", dstAddr.String()))
+		c.udpOrigDstMap_.Lock()
+		defer c.udpOrigDstMap_.Unlock()
+		srcConn.Close()
+		c.udpOrigDstMap_.Del(chanKey)
+	}()
+	timer := time.NewTimer(udpTimeout)
+	timeout := time.Now()
+	for {
+		select {
+		case ch := <-sendChannel:
+			if len(ch.payload) > 0 {
+				if _, err := srcConn.WriteTo(ch.payload, ch.srcAddr); err != nil {
+					logger.Error("UDP orig dst handler write failed", zap.String("error", err.Error()))
+					return
+				} else {
+					logger.Debug("UDP orig dst write back", zap.String("srcAddr", ch.srcAddr.String()), zap.String("dstAddr", dstAddr.String()))
+					timeout = timeout.Add(udpTimeout)
+				}
+			}
+
+		case <-timer.C:
+			diff := timeout.Sub(time.Now())
+			if diff >= 0 {
+				timer.Reset(diff)
+			} else {
+				logger.Debug("UDP orig dst handler timeout", zap.String("dstAddr", dstAddr.String()), zap.Duration("timeout", udpTimeout))
+				return
+			}
+		}
+	}
+}
 func (c *ProxyClient) writeBackUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, payload []byte, udpTimeout time.Duration) {
 	logger := log.GetLogger()
 	chanKey := dstAddr.String()
@@ -437,90 +479,15 @@ func (c *ProxyClient) writeBackUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAdd
 	sendChannel := c.udpOrigDstMap_.Get(chanKey)
 	if sendChannel == nil{
 		if srcConn, err := network.DialTransparentUDP(dstAddr); err != nil {
-			logger.Error("UDP proxy listen using transparent failed", zap.String("error", err.Error()))
+			logger.Error("UDP proxy listen using transparent failed", zap.String("src", srcAddr.String()), zap.String("dst", dstAddr.String()), zap.String("error", err.Error()))
 			return
 		} else {
 			sendChannel = make(chan dstMapChannel, common.CHANNEL_QUEUE_LENGTH)
 			c.udpOrigDstMap_.Add(chanKey, sendChannel)
-			go func() {
-				defer c.udpOrigDstMap_.Unlock()
-				defer srcConn.Close()
-				defer c.udpOrigDstMap_.Del(chanKey)
-				defer c.udpOrigDstMap_.Lock()
-				timer := time.NewTimer(udpTimeout)
-				timeout := time.Now()
-				for {
-					select {
-					case ch := <-sendChannel:
-						if len(ch.payload) > 0 {
-							if _, err := srcConn.WriteTo(ch.payload, ch.srcAddr); err != nil {
-								logger.Error("UDP orig dst handler write failed", zap.String("error", err.Error()))
-								return
-							} else {
-								logger.Debug("UDP orig dst write back", zap.String("srcAddr", ch.srcAddr.String()), zap.String("dstAddr", dstAddr.String()))
-								timeout = timeout.Add(udpTimeout)
-							}
-						}
-
-					case <-timer.C:
-						diff := timeout.Sub(time.Now())
-						if diff >= 0 {
-							timer.Reset(diff)
-						} else {
-							logger.Debug("UDP orig dst handler timeout", zap.String("dstAddr", dstAddr.String()))
-							return
-						}
-					}
-				}
-
-			}()
+			go c.doWriteBackUDPData(srcConn, chanKey, udpTimeout, sendChannel, dstAddr)
 		}
 	}
 	sendChannel <- signal
-/*
-	if !c.udpOrigDstMap_.Send(chanKey, signal) {
-		if srcConn, err := network.DialTransparentUDP(dstAddr); err != nil {
-			logger.Error("UDP proxy listen using transparent failed", zap.String("error", err.Error()))
-		} else {
-			dstChannel := make(chan dstMapChannel, common.CHANNEL_QUEUE_LENGTH)
-			c.udpOrigDstMap_.Add(chanKey, dstChannel)
-			go func() {
-				defer srcConn.Close()
-				defer close(dstChannel)
-				defer c.udpOrigDstMap_.Del(chanKey)
-				timer := time.NewTimer(udpTimeout)
-				timeout := time.Now()
-				for {
-					select {
-					case ch := <-dstChannel:
-						if len(ch.payload) > 0 {
-							if _, err := srcConn.WriteTo(ch.payload, ch.srcAddr); err != nil {
-								logger.Error("UDP orig dst handler write failed", zap.String("error", err.Error()))
-							} else {
-								logger.Debug("UDP orig dst write back", zap.String("srcAddr", ch.srcAddr.String()), zap.String("dstAddr", dstAddr.String()))
-								timeout = timeout.Add(udpTimeout)
-							}
-						} else {
-							return
-						}
-
-					case <-timer.C:
-						diff := timeout.Sub(time.Now())
-						if diff >= 0 {
-							timer.Reset(diff)
-						} else {
-							logger.Debug("UDP orig dst handler timeout", zap.String("dstAddr", dstAddr.String()))
-							return
-						}
-					}
-				}
-
-			}()
-			c.udpOrigDstMap_.Send(chanKey, signal)
-		}
-	}
-	logger.Debug("Send to dst map channel", zap.String("srcAddr", srcAddr.String()), zap.String("dstAddr", dstAddr.String()))
-	dstChannel <- dstMapChannel{srcAddr, payload}*/
 }
 
 func (c *ProxyClient) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, data []byte, dataLen int) error {
@@ -550,10 +517,12 @@ func (c *ProxyClient) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, d
 		// now lets run copy from dst
 		go func() {
 			// copy udp from remote
-			defer c.udpNatMap_.Unlock()
-			defer udpProxy.dst_.Close()
-			defer c.udpNatMap_.Del(udpKey)
-			defer c.udpNatMap_.Lock()
+			defer func(){
+				c.udpNatMap_.Lock()
+				defer c.udpNatMap_.Unlock()
+				udpProxy.dst_.Close()
+				c.udpNatMap_.Del(udpKey)
+			}()
 
 			buffer := c.udpBuffer_.Get()
 			defer c.udpBuffer_.Put(buffer)

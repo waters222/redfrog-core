@@ -5,6 +5,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/weishi258/go-iptables/iptables"
 	"github.com/weishi258/redfrog-core/common"
+	"github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/log"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
@@ -145,10 +146,11 @@ func (c *RoutingMgr) createRedFrogChain(isIPv6 bool) (err error) {
 		err = errors.Wrap(err, "Append into RED_FROG chain to avoid double tap for TProxy")
 		return
 	}
-	if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "udp", "-m", "socket", "-j", CHAIN_DIVERT); err != nil {
-		err = errors.Wrap(err, "Append into RED_FROG chain to avoid double tap for TProxy")
-		return
-	}
+	// remove this because it disrupted with UDP filter
+	//if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "udp", "-m", "socket", "-j", CHAIN_DIVERT); err != nil {
+	//	err = errors.Wrap(err, "Append into RED_FROG chain to avoid double tap for TProxy")
+	//	return
+	//}
 
 	if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-m", "conntrack", "--ctstate", "ESTABLISHED", "-j", "RETURN"); err != nil {
 		err = errors.Wrap(err, "Append into RED_FROG chain to return established connection")
@@ -283,7 +285,7 @@ func (c *RoutingMgr) Stop() {
 }
 
 func (c *RoutingMgr) serializeRoutingTable() (err error) {
-	file, err := os.Create(CACHE_PATH) // For read access.
+	file, err := os.Create(config.GetPathFromWorkingDir(CACHE_PATH)) // For read access.
 	if err != nil {
 		err = errors.Wrapf(err, "Create routing cache file %s failed", CACHE_PATH)
 		return
@@ -327,7 +329,7 @@ func (c *RoutingMgr) serializeRoutingTable() (err error) {
 }
 
 func (c *RoutingMgr) deserializeRoutingTable() (ret *RoutingMgrCache, err error) {
-	file, err := os.Open(CACHE_PATH) // For read access.
+	file, err := os.Open(config.GetPathFromWorkingDir(CACHE_PATH)) // For read access.
 	if err != nil {
 		err = errors.Wrapf(err, "Create routing cache file %s failed", CACHE_PATH)
 		return

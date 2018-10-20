@@ -52,7 +52,6 @@ func CreateProxyBackend(remoteServerConfig config.RemoteServerConfig) (ret *prox
 	ret.remoteServerConfig = remoteServerConfig
 	ret.tcpTimeout_ = time.Second * time.Duration(remoteServerConfig.TcpTimeout)
 	ret.udpTimeout_ = time.Second * time.Duration(remoteServerConfig.UdpTimeout)
-
 	var isIPv6 bool
 	if isIPv6, err = network.CheckIPFamily(remoteServerConfig.RemoteServer); err != nil {
 		err = errors.Wrap(err, fmt.Sprintf("Invalid IP format: %s", remoteServerConfig.RemoteServer))

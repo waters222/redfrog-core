@@ -1,77 +1,55 @@
 package log
 
 import (
+	"fmt"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"os"
-	"runtime"
 )
 
 var logger *zap.Logger
-var loggerSugar *zap.SugaredLogger
-var bIsProductionMode bool
 
-func InitLogger(logLevel string, bIsProductionMode bool) *zap.Logger {
-	var levelEnabler zap.LevelEnablerFunc
+func InitLogger(logFile string, logLevel string, bJson bool) *zap.Logger {
+
+	var cfg zap.Config
+	cfg = zap.NewProductionConfig()
+	cfg.DisableCaller = true
+	cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	if ! bJson {
+		cfg.Encoding = "console"
+	}
+
 	switch logLevel {
-	case "debug":
-		levelEnabler = zap.LevelEnablerFunc(func(lvl zapcore.Level) bool { return lvl >= zapcore.DebugLevel })
-	case "info":
-		levelEnabler = zap.LevelEnablerFunc(func(lvl zapcore.Level) bool { return lvl >= zapcore.InfoLevel })
-	case "warn":
-		levelEnabler = zap.LevelEnablerFunc(func(lvl zapcore.Level) bool { return lvl >= zapcore.WarnLevel })
-	case "error":
-		levelEnabler = zap.LevelEnablerFunc(func(lvl zapcore.Level) bool { return lvl >= zapcore.ErrorLevel })
-	case "fatal":
-		levelEnabler = zap.LevelEnablerFunc(func(lvl zapcore.Level) bool { return lvl >= zapcore.FatalLevel })
-	case "panic":
-		levelEnabler = zap.LevelEnablerFunc(func(lvl zapcore.Level) bool { return lvl >= zapcore.PanicLevel })
-	default:
-		levelEnabler = zap.LevelEnablerFunc(func(lvl zapcore.Level) bool { return lvl >= zapcore.InfoLevel })
+		case "debug":
+			cfg.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
+		case "info":
+			cfg.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
+		case "warn":
+			cfg.Level = zap.NewAtomicLevelAt(zapcore.WarnLevel)
+		case "error":
+			cfg.Level = zap.NewAtomicLevelAt(zapcore.ErrorLevel)
+		case "fatal":
+			cfg.Level = zap.NewAtomicLevelAt(zapcore.FatalLevel)
+		case "panic":
+			cfg.Level = zap.NewAtomicLevelAt(zapcore.PanicLevel)
+		default:
+			cfg.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
 	}
 
-	consoleOut := zapcore.Lock(os.Stdout)
-	var consoleEncoder zapcore.Encoder
-	if bIsProductionMode {
-		consoleEncoder = zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
-	} else {
-		consoleEncoder = zapcore.NewConsoleEncoder(zap.NewDevelopmentEncoderConfig())
+	if len(logFile) == 0{
+		cfg.OutputPaths = []string{"stdout"}
+	}else{
+		cfg.OutputPaths = []string{"stdout", logFile}
 	}
-	core := zapcore.NewTee(
-		zapcore.NewCore(consoleEncoder, consoleOut, levelEnabler),
-	)
-	logger = zap.New(core)
-	loggerSugar = logger.Sugar()
+
+	var err error
+	if logger, err = cfg.Build(); err != nil{
+		fmt.Println(fmt.Sprintf("Init zap logger failed: %s", err.Error()))
+		return nil
+	}
+
 	return logger
 }
 
 func GetLogger() *zap.Logger {
-	pc := make([]uintptr, 1) // at least 1 entry needed
-	runtime.Callers(2, pc)
-	//f := runtime.FuncForPC(pc[0])
-
-	if bIsProductionMode {
-		return logger
-		//return logger.With(zap.String("caller", f.Name()))
-	} else {
-		return logger
-		//file, line := f.FileLine(pc[0])
-		//return logger.With(zap.String("caller", f.Name()),
-		//	zap.String("file", file),
-		//	zap.Int("line", line))
-	}
-}
-
-func GetLoggerSugar() *zap.SugaredLogger {
-	pc := make([]uintptr, 1) // at least 1 entry needed
-	runtime.Callers(2, pc)
-	f := runtime.FuncForPC(pc[0])
-	if bIsProductionMode {
-		return loggerSugar.With(zap.String("caller", f.Name()))
-	} else {
-		file, line := f.FileLine(pc[0])
-		return loggerSugar.With(zap.String("caller", f.Name()),
-			zap.String("file", file),
-			zap.Int("line", line))
-	}
+	return logger
 }

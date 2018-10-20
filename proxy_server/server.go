@@ -23,8 +23,8 @@ func main() {
 	var printVer bool
 	var configFile string
 	var logLevel string
-	var bProduction bool
-
+	var bJson bool
+	var logFile string
 	var err error
 
 	// parse parameters
@@ -32,7 +32,8 @@ func main() {
 	flag.BoolVar(&printVer, "version", false, "print server version")
 	flag.StringVar(&configFile, "c", "server_config.json", "server config file")
 	flag.StringVar(&logLevel, "l", "info", "log level")
-	flag.BoolVar(&bProduction, "production", false, "is production mode")
+	flag.BoolVar(&bJson, "json", false, "log output json format")
+	flag.StringVar(&logFile, "log", "", "log output file path")
 	flag.Parse()
 
 	defer func() {
@@ -45,7 +46,7 @@ func main() {
 
 	// init logger
 
-	logger := log.InitLogger(logLevel, bProduction)
+	logger := log.InitLogger(logFile, logLevel, bJson)
 
 	// print version
 	if printVer {

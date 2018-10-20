@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/weishi258/redfrog-core/common"
+	"github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/log"
 	"github.com/weishi258/redfrog-core/routing"
 	"go.uber.org/zap"
@@ -273,7 +274,7 @@ func (c *PacListMgr) CheckDomain(domain string) bool {
 func parsePacList(path string) (ret *PacList, err error) {
 
 
-	file, err := os.Open(path) // For read access.
+	file, err := os.Open(config.GetPathFromWorkingDir(path)) // For read access.
 	if err != nil {
 		return nil, errors.Wrapf(err, "Open config file %s failed", path)
 	}

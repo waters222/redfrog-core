@@ -35,7 +35,8 @@ func main() {
 	var configFile string
 	var logLevel string
 	var bProduction bool
-
+	var workingDir string
+	var logFile string
 	var err error
 
 	// parse parameters
@@ -44,6 +45,8 @@ func main() {
 	flag.StringVar(&configFile, "c", "server_config.json", "server config file")
 	flag.StringVar(&logLevel, "l", "info", "log level")
 	flag.BoolVar(&bProduction, "production", false, "is production mode")
+	flag.StringVar(&workingDir, "d", "./", "working directory")
+	flag.StringVar(&logFile, "log", "", "log output file path")
 	flag.Parse()
 
 	defer func() {
@@ -55,7 +58,7 @@ func main() {
 	}()
 
 	// init logger
-	logger := log.InitLogger(logLevel, bProduction)
+	logger := log.InitLogger(logFile, logLevel, bProduction)
 
 	// print version
 	if printVer {
@@ -74,6 +77,7 @@ func main() {
 			os.Exit(0)
 		}
 	}()
+	SetWorkingDir(workingDir)
 
 	serviceStopSignal = make(chan bool)
 	appRunStatus = make(chan bool)

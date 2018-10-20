@@ -3,7 +3,7 @@ routing-table: 100
 listen-port: 9090
 ignore-ip:
 dns:
-  listen-addr: "0.0.0.0:53"
+  listen-addr: "192.168.0.2:53"
   proxy-resolver:
     - "127.0.0.11"
   timeout: 5
@@ -22,14 +22,14 @@ shadowsocks:
       remote-server: "192.168.1.2:20000"
       crypt: "AEAD_CHACHA20_POLY1305"
       Password: "123321A"
-      tcp-timeout: 120
-      udp-timeout: 60
+      tcp-timeout: 20
+      udp-timeout: 10
       kcptun:
-        enable: true
+        enable: false
         server: "192.168.1.2:20010"
         mode: "fast"
-        thread: 4
-        conn: 4
+        thread: 1
+        conn: 1
         autoexpire: 0
         mtu: 1350
         sndwnd: 128

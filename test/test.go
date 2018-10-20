@@ -62,7 +62,7 @@ func main() {
 	flag.BoolVar(&bTransparent, "t", false, "transparent")
 	flag.Parse()
 
-	logger := log.InitLogger(logLevel, false)
+	logger := log.InitLogger("",logLevel, false)
 
 	defer func() {
 		if err != nil {

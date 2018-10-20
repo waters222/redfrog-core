@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"github.com/pkg/errors"
 	"github.com/weishi258/redfrog-core/common"
+	"github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/log"
 	"go.uber.org/zap"
 	"os"
@@ -67,7 +68,7 @@ func (c *dnsFilter) readWhiteList(fileList []string) error{
 }
 
 func (c *dnsFilter) readList(path string, flag bool) (err error){
-	file, err := os.Open(path) // For read access.
+	file, err := os.Open(config.GetPathFromWorkingDir(path)) // For read access.
 	if err != nil {
 		err = errors.Wrapf(err, "Open filter list file %s failed", path)
 		return
