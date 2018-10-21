@@ -111,9 +111,18 @@ func (c *RoutingMgr) createTProxyMarkChain(port int, mark string, isIPv6 bool) (
 		err = errors.Wrap(err, fmt.Sprintf("Create/Flush %s chain failed", CHAIN_TPROXY))
 		return
 	}
-	handler.Append(TABLE_MANGLE, CHAIN_TPROXY, "-p", "tcp", "-j", "TPROXY", "--tproxy-mark", mark, "--on-port", strconv.FormatInt(int64(port), 10))
-	handler.Append(TABLE_MANGLE, CHAIN_TPROXY, "-p", "udp", "-j", "TPROXY", "--tproxy-mark", mark, "--on-port", strconv.FormatInt(int64(port), 10))
-	handler.Append(TABLE_MANGLE, CHAIN_TPROXY, "-j", "ACCEPT")
+	if err = handler.Append(TABLE_MANGLE, CHAIN_TPROXY, "-p", "tcp", "-j", "TPROXY", "--tproxy-mark", mark, "--on-port", strconv.FormatInt(int64(port), 10)); err != nil{
+		err = errors.Wrapf(err, "Append into %s chain failed", CHAIN_TPROXY)
+		return
+	}
+	if err = handler.Append(TABLE_MANGLE, CHAIN_TPROXY, "-p", "udp", "-j", "TPROXY", "--tproxy-mark", mark, "--on-port", strconv.FormatInt(int64(port), 10)); err != nil{
+		err = errors.Wrapf(err, "Append into %s chain failed", CHAIN_TPROXY)
+		return
+	}
+	if err = handler.Append(TABLE_MANGLE, CHAIN_TPROXY, "-j", "ACCEPT"); err != nil{
+		err = errors.Wrapf(err, "Append into %s chain failed", CHAIN_TPROXY)
+		return
+	}
 	return
 }
 
@@ -127,8 +136,14 @@ func (c *RoutingMgr) createDivertChain(isIPv6 bool, mark string) (err error) {
 		return
 	}
 
-	handler.Append(TABLE_MANGLE, CHAIN_DIVERT, "-j", "MARK", "--set-mark", mark)
-	handler.Append(TABLE_MANGLE, CHAIN_DIVERT, "-j", "ACCEPT")
+	if err = handler.Append(TABLE_MANGLE, CHAIN_DIVERT, "-j", "MARK", "--set-mark", mark); err != nil{
+		err = errors.Wrapf(err, "Append into %s chain failed", CHAIN_DIVERT)
+		return
+	}
+	if err = handler.Append(TABLE_MANGLE, CHAIN_DIVERT, "-j", "ACCEPT"); err != nil{
+		err = errors.Wrapf(err, "Append into %s chain failed", CHAIN_DIVERT)
+		return
+	}
 	return
 }
 
@@ -142,11 +157,15 @@ func (c *RoutingMgr) createRedFrogChain(isIPv6 bool) (err error) {
 	}
 
 	// add divert
-	if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "tcp", "-m", "socket", "-j", CHAIN_DIVERT); err != nil {
+	if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG,  "-m", "socket", "-j", CHAIN_DIVERT); err != nil {
 		err = errors.Wrap(err, "Append into RED_FROG chain to avoid double tap for TProxy")
 		return
 	}
-	// remove this because it disrupted with UDP filter
+
+	//if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG,  "-p", "tcp","-m", "socket", "-j", CHAIN_DIVERT); err != nil {
+	//	err = errors.Wrap(err, "Append into RED_FROG chain to avoid double tap for TProxy")
+	//	return
+	//}
 	//if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "udp", "-m", "socket", "-j", CHAIN_DIVERT); err != nil {
 	//	err = errors.Wrap(err, "Append into RED_FROG chain to avoid double tap for TProxy")
 	//	return
@@ -231,17 +250,24 @@ func (c *RoutingMgr) initPreRoutingChain(isIPv6 bool, interfaceName[] string) (e
 	if len(interfaceName) > 0 {
 		for _, name := range interfaceName{
 			if len(name) > 0{
-				if err = handler.Append(TABLE_MANGLE, CHAIN_PREROUTING, "-i", name, "-j", CHAIN_RED_FROG); err != nil {
+				if err = handler.Append(TABLE_MANGLE, CHAIN_PREROUTING, "-p", "tcp", "-i", name, "-j", CHAIN_RED_FROG); err != nil {
 					err = errors.Wrap(err, "Append into PREROUTING chain failed")
 					return
-				}else{
-					interfaceAdded = true
 				}
+				if err = handler.Append(TABLE_MANGLE, CHAIN_PREROUTING, "-p", "udp", "-i", name, "-j", CHAIN_RED_FROG); err != nil {
+					err = errors.Wrap(err, "Append into PREROUTING chain failed")
+					return
+				}
+				interfaceAdded = true
 			}
 		}
 	}
 	if !interfaceAdded{
-		if err = handler.Append(TABLE_MANGLE, CHAIN_PREROUTING, "-j", CHAIN_RED_FROG); err != nil {
+		if err = handler.Append(TABLE_MANGLE, CHAIN_PREROUTING, "-p", "tcp", "-j", CHAIN_RED_FROG); err != nil {
+			err = errors.Wrap(err, "Append into PREROUTING chain failed")
+			return
+		}
+		if err = handler.Append(TABLE_MANGLE, CHAIN_PREROUTING, "-p", "udp", "-j", CHAIN_RED_FROG); err != nil {
 			err = errors.Wrap(err, "Append into PREROUTING chain failed")
 			return
 		}

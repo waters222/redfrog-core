@@ -13,6 +13,7 @@ func InitLogger(logFile string, logLevel string, bJson bool) *zap.Logger {
 	var cfg zap.Config
 	cfg = zap.NewProductionConfig()
 	cfg.DisableCaller = true
+	cfg.DisableStacktrace = true
 	cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 	if ! bJson {
 		cfg.Encoding = "console"

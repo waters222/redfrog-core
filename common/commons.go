@@ -2,6 +2,7 @@ package common
 
 import (
 	"github.com/miekg/dns"
+	"net"
 	"time"
 )
 
@@ -29,4 +30,8 @@ type DNSServerInterface interface {
 type ProxyClientInterface interface {
 	ExchangeDNS(dnsAddr string, data []byte, timeout time.Duration) (response *dns.Msg, err error)
 	SetDNSProcessor(server DNSServerInterface)
+	HandleUDP(buffer []byte, srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, dataLen int)
+	GetUDPBuffer() []byte
+	PutUDPBuffer(buffer []byte)
 }
+
