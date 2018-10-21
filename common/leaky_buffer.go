@@ -26,17 +26,17 @@ func (c *LeakyBuffer) Get() []byte {
 }
 
 func (c *LeakyBuffer) Put(buffer []byte) {
-	if buffer != nil{
+	if buffer != nil {
 		capacity := cap(buffer)
-		if capacity != c.bufferSize_{
+		if capacity != c.bufferSize_ {
 			buffer = make([]byte, c.bufferSize_)
-		}else{
+		} else {
 			// restore to full capacity
 			buffer = buffer[:capacity]
 		}
 		select {
-			case c.pool_ <- buffer:
-			default:
+		case c.pool_ <- buffer:
+		default:
 		}
 	}
 }

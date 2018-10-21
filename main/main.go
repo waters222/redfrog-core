@@ -144,7 +144,7 @@ func StartService(configFile string) {
 	pacListMgr.ReadPacList(config.PacList)
 
 	var proxyClient *proxy_client.ProxyClient
-	if proxyClient, err = proxy_client.StartProxyClient(config.Dns.Timeout * DNS_MOCK_TIMEOUT_MUTIPLIER, config.Shadowsocks, fmt.Sprintf("0.0.0.0:%d", config.ListenPort)); err != nil {
+	if proxyClient, err = proxy_client.StartProxyClient(config.Dns.Timeout*DNS_MOCK_TIMEOUT_MUTIPLIER, config.Shadowsocks, fmt.Sprintf("0.0.0.0:%d", config.ListenPort)); err != nil {
 		logger.Error("Start proxy client failed", zap.String("error", err.Error()))
 		return
 	}
@@ -184,13 +184,11 @@ func StartService(configFile string) {
 
 			dnsServer.Reload(newConfig.Dns)
 
-			if err = proxyClient.ReloadBackend(config.Dns.Timeout * DNS_MOCK_TIMEOUT_MUTIPLIER, newConfig.Shadowsocks); err != nil{
+			if err = proxyClient.ReloadBackend(config.Dns.Timeout*DNS_MOCK_TIMEOUT_MUTIPLIER, newConfig.Shadowsocks); err != nil {
 				logger.Error("Reload backend failed", zap.String("error", err.Error()))
-			}else{
+			} else {
 				logger.Info("Reload backend successful")
 			}
-
-
 
 			//pacListMgr.ReadPacList()
 		case <-serviceStopSignal:

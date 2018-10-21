@@ -8,10 +8,9 @@ import (
 )
 
 type testCase struct {
-	input 			[]byte
-	verification 	[]byte
+	input        []byte
+	verification []byte
 }
-
 
 func TestFilterComment(t *testing.T) {
 
@@ -21,9 +20,9 @@ func TestFilterComment(t *testing.T) {
 		testCase{[]byte("测试3 # 哈哈##"), []byte("测试3 ")},
 		testCase{[]byte("hi there"), []byte("hi there")},
 	}
-	for _, line := range lines{
+	for _, line := range lines {
 		filtered := filterComment(line.input)
-		if bytes.Compare(line.verification, filtered) != 0{
+		if bytes.Compare(line.verification, filtered) != 0 {
 			t.Errorf("filter comment failed: output: %s != verification: %s", filtered, line.verification)
 			t.Fail()
 		}
@@ -32,11 +31,11 @@ func TestFilterComment(t *testing.T) {
 
 func TestDomainExtraction(t *testing.T) {
 	temp := make([]string, 128)
-	for i:= 0 ; i < 128; i++{
+	for i := 0; i < 128; i++ {
 		temp[i] = strconv.Itoa(i)
 	}
 	deepSubDomains := strings.Join(temp, ".")
-	deepSubDomains = deepSubDomains +".com"
+	deepSubDomains = deepSubDomains + ".com"
 	domains := []testCase{
 		testCase{[]byte("www.google.com"), []byte("www.google.com")},
 		testCase{[]byte("google.com"), []byte("google.com")},
@@ -66,12 +65,12 @@ func TestDomainExtraction(t *testing.T) {
 		testCase{[]byte(deepSubDomains[:]), nil},
 	}
 
-	for _, domain := range domains{
+	for _, domain := range domains {
 		filtered := filterComment(domain.input)
-		if extracted, err := extractDomain(filtered); err != nil{
-			t.Errorf("extract domain failed from {%s}: %s",domain.input, err.Error())
+		if extracted, err := extractDomain(filtered); err != nil {
+			t.Errorf("extract domain failed from {%s}: %s", domain.input, err.Error())
 			t.Fail()
-		}else if bytes.Compare(domain.verification, extracted) != 0{
+		} else if bytes.Compare(domain.verification, extracted) != 0 {
 			t.Errorf("extract domain failed from: {%s}\noutput: {%s} != verification: {%s}", domain.input, extracted, domain.verification)
 			t.Fail()
 		}

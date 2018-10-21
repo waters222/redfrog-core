@@ -65,7 +65,7 @@ func (c *udpNatMap) Del(key string) {
 func (c *udpNatMap) Add(key string, conn *net.UDPConn, header []byte) (ret *udpNatMapEntry) {
 	buf := make([]byte, len(header))
 	copy(buf, header)
-	ret = &udpNatMapEntry{conn:conn, header:buf}
+	ret = &udpNatMapEntry{conn: conn, header: buf}
 	c.entries[key] = ret
 	return
 }
@@ -268,11 +268,11 @@ func (c *ProxyServer) handleUDP(buffer []byte, dataLen int, srcAddr net.Addr) {
 		remoteConnEntry = c.udpNatMap_.Add(keyStr, remoteConn, dstAddrBytes)
 		go c.copyFromRemote(remoteConnEntry, keyStr, dstAddr, srcAddr)
 	}
-	if _, err = remoteConnEntry.conn.WriteTo(buffer[len(dstAddrBytes):dataLen], dstAddr); err != nil{
+	if _, err = remoteConnEntry.conn.WriteTo(buffer[len(dstAddrBytes):dataLen], dstAddr); err != nil {
 		// something failed, so delete this entry
 		c.udpNatMap_.Del(keyStr)
 		logger.Error("UPD write to remote failed", zap.String("error", err.Error()))
-	}else{
+	} else {
 		remoteConnEntry.conn.SetReadDeadline(time.Now().Add(c.udpTimeout_))
 		logger.Debug("UDP write to remote successful", zap.String("dst", dstAddr.String()))
 	}
@@ -294,12 +294,12 @@ func (c *ProxyServer) copyFromRemote(entry *udpNatMapEntry, keyStr string, dstAd
 		// let dns query fast expire
 		entry.conn.SetReadDeadline(time.Now().Add(c.udpTimeout_))
 
-		if dataLen, _, err := entry.conn.ReadFrom(remoteBuffer); err != nil{
+		if dataLen, _, err := entry.conn.ReadFrom(remoteBuffer); err != nil {
 			if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
 				logger.Error("UDP read from remote failed", zap.String("error", err.Error()))
 			}
 			return
-		}else{
+		} else {
 			// lets write back
 			headerLen := len(entry.header)
 			totalLen := dataLen + headerLen

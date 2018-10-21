@@ -12,10 +12,10 @@ const (
 )
 const (
 	UDP_BUFFER_POOL_SIZE = 1024 * 10
-	UDP_BUFFER_SIZE = 1024 * 4
+	UDP_BUFFER_SIZE      = 1024 * 4
 
 	DNS_BUFFER_POOL_SIZE = 1024 * 4
-	DNS_BUFFER_SIZE = 1024 * 2
+	DNS_BUFFER_SIZE      = 1024 * 2
 
 	UDP_OOB_POOL_SIZE   = 512
 	UDP_OOB_BUFFER_SIZE = 1024 * 2
@@ -34,4 +34,3 @@ type ProxyClientInterface interface {
 	GetUDPBuffer() []byte
 	PutUDPBuffer(buffer []byte)
 }
-

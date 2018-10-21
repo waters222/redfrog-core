@@ -12,33 +12,34 @@ import (
 )
 
 type udpBackendPayloadSignal struct {
-	srcAddr 	*net.UDPAddr
-	payload 	[]byte
+	srcAddr *net.UDPAddr
+	payload []byte
 }
 type udpBackendEntry struct {
-	conn 		*net.UDPConn
-	timeout 	time.Duration
-	addr		*net.UDPAddr
-	signal      chan udpBackendPayloadSignal
-	die			chan bool
+	conn    *net.UDPConn
+	timeout time.Duration
+	addr    *net.UDPAddr
+	signal  chan udpBackendPayloadSignal
+	die     chan bool
 }
 
-type udpBackend struct{
+type udpBackend struct {
 	sync.RWMutex
 	backend map[string]*udpBackendEntry
 }
-func (c *udpBackend) removeEntry(entry *udpBackendEntry){
+
+func (c *udpBackend) removeEntry(entry *udpBackendEntry) {
 	c.Lock()
 	defer c.Unlock()
 	delete(c.backend, entry.addr.String())
 	entry.conn.Close()
 	log.GetLogger().Debug("UDP proxy backend entry stopped", zap.String("addr", entry.addr.String()))
 }
-func (c *udpBackend) stop(){
+func (c *udpBackend) stop() {
 	c.RLock()
 	defer c.RUnlock()
 
-	for _, entry := range c.backend{
+	for _, entry := range c.backend {
 		close(entry.die)
 	}
 	log.GetLogger().Info("UDP proxy backend stopped")
@@ -51,31 +52,31 @@ func NewUDPBackend() *udpBackend {
 	return ret
 }
 
-func (c *udpBackend) newUDPBackendEntry(addr *net.UDPAddr, timeout time.Duration) (*udpBackendEntry, error){
+func (c *udpBackend) newUDPBackendEntry(addr *net.UDPAddr, timeout time.Duration) (*udpBackendEntry, error) {
 	if conn, err := network.DialTransparentUDP(addr); err != nil {
 		return nil, errors.Wrapf(err, "UDP proxy backend listen using transparent failed for addr: %s", addr.String())
-	}else{
+	} else {
 		return &udpBackendEntry{conn: conn,
-								addr: addr,
-								timeout: timeout,
-								signal: make(chan udpBackendPayloadSignal,
-										common.CHANNEL_QUEUE_LENGTH),
-								die: make(chan bool)},
-				nil
+				addr:    addr,
+				timeout: timeout,
+				signal: make(chan udpBackendPayloadSignal,
+					common.CHANNEL_QUEUE_LENGTH),
+				die: make(chan bool)},
+			nil
 	}
 }
 
-func (c *udpBackend) WriteBackUDPPayload(proxyClientUDPBackend common.ProxyClientInterface, srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, payload []byte, udpTimeout time.Duration) (err error){
+func (c *udpBackend) WriteBackUDPPayload(proxyClientUDPBackend common.ProxyClientInterface, srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, payload []byte, udpTimeout time.Duration) (err error) {
 	chanKey := dstAddr.String()
 	signal := udpBackendPayloadSignal{srcAddr, payload}
 	c.Lock()
 	defer c.Unlock()
 	backChannelEntry, ok := c.backend[chanKey]
-	if !ok{
-		if backChannelEntry, err = c.newUDPBackendEntry(dstAddr, udpTimeout); err != nil{
+	if !ok {
+		if backChannelEntry, err = c.newUDPBackendEntry(dstAddr, udpTimeout); err != nil {
 			return errors.Wrapf(err, "UDP proxy failed for srcAddr: %s", srcAddr.String())
 		}
-		c.backend[chanKey] =  backChannelEntry
+		c.backend[chanKey] = backChannelEntry
 		go backChannelEntry.doWriteBackLoop(proxyClientUDPBackend, c)
 	}
 
@@ -83,8 +84,7 @@ func (c *udpBackend) WriteBackUDPPayload(proxyClientUDPBackend common.ProxyClien
 	return
 }
 
-
-func (c* udpBackendEntry) doWriteBackLoop(proxyClientUDPBackend common.ProxyClientInterface, udpBackendHandler *udpBackend){
+func (c *udpBackendEntry) doWriteBackLoop(proxyClientUDPBackend common.ProxyClientInterface, udpBackendHandler *udpBackend) {
 	logger := log.GetLogger()
 
 	defer udpBackendHandler.removeEntry(c)
@@ -111,32 +111,32 @@ func (c* udpBackendEntry) doWriteBackLoop(proxyClientUDPBackend common.ProxyClie
 			}
 
 		case <-timer.C:
-			if diff := timeout.Sub(time.Now()); diff >= 0{
+			if diff := timeout.Sub(time.Now()); diff >= 0 {
 				timer.Reset(diff)
-			}else{
+			} else {
 				logger.Debug("UDP proxy backend timeout", zap.String("addr", c.addr.String()))
 				return
 			}
-		case <- c.die:
+		case <-c.die:
 			return
 		}
 	}
 
 }
 
-func (c* udpBackendEntry) doListenLoop(proxyClientUDPBackend common.ProxyClientInterface){
-	for{
-		select{
-			case <- c.die:
+func (c *udpBackendEntry) doListenLoop(proxyClientUDPBackend common.ProxyClientInterface) {
+	for {
+		select {
+		case <-c.die:
+			return
+		default:
+			buffer := proxyClientUDPBackend.GetUDPBuffer()
+			if dataLen, srcAddr, err := c.conn.ReadFromUDP(buffer); err != nil {
+				proxyClientUDPBackend.PutUDPBuffer(buffer)
 				return
-			default:
-				buffer := proxyClientUDPBackend.GetUDPBuffer()
-				if dataLen, srcAddr, err := c.conn.ReadFromUDP(buffer); err != nil{
-					proxyClientUDPBackend.PutUDPBuffer(buffer)
-					return
-				}else{
-					go proxyClientUDPBackend.HandleUDP(buffer, srcAddr, c.addr, dataLen)
-				}
+			} else {
+				go proxyClientUDPBackend.HandleUDP(buffer, srcAddr, c.addr, dataLen)
+			}
 		}
 
 	}

@@ -17,7 +17,6 @@ import (
 	"time"
 )
 
-
 func main() {
 	var err error
 	sigChan := make(chan os.Signal, 5)
@@ -43,7 +42,7 @@ func main() {
 	flag.StringVar(&mode, "m", "", "mode: all/proxy/dns")
 	flag.StringVar(&logLevel, "l", "info", "log level")
 	flag.StringVar(&dnsFile, "d", "info", "dns file")
-	flag.IntVar(&runningTime,"time",  10,"running time in seconds")
+	flag.IntVar(&runningTime, "time", 10, "running time in seconds")
 	flag.IntVar(&repeatInterval, "r", 5, "repeat interval in second")
 	flag.IntVar(&port, "port", 9191, "min port value")
 	flag.IntVar(&portRange, "portRange", 100, "port range")
@@ -53,8 +52,6 @@ func main() {
 
 	logger := log.InitLogger(logLevel, false)
 
-
-
 	defer func() {
 		if err != nil {
 			logger.Error("Exit 1", zap.String("error", err.Error()))
@@ -63,37 +60,36 @@ func main() {
 			os.Exit(0)
 		}
 	}()
-	if port <= 1024{
+	if port <= 1024 {
 		err = errors.New(fmt.Sprintf("port is less then 1024: %d", port))
 		return
 	}
-	errorChan := make(chan error, dnsCount + portRange)
+	errorChan := make(chan error, dnsCount+portRange)
 
-
-	if mode == "all"{
-		if err = startDns(errorChan, dnsFile, dnsCount, repeatInterval); err != nil{
+	if mode == "all" {
+		if err = startDns(errorChan, dnsFile, dnsCount, repeatInterval); err != nil {
 			return
 		}
-		if err = startProxy(errorChan, port, portRange, repeatInterval); err != nil{
+		if err = startProxy(errorChan, port, portRange, repeatInterval); err != nil {
 			return
 		}
-	}else if mode == "proxy"{
-		if err = startProxy(errorChan, port, portRange, repeatInterval); err != nil{
+	} else if mode == "proxy" {
+		if err = startProxy(errorChan, port, portRange, repeatInterval); err != nil {
 			return
 		}
-	}else if mode == "dns"{
-		if err = startDns(errorChan, dnsFile, dnsCount, repeatInterval); err != nil{
+	} else if mode == "dns" {
+		if err = startDns(errorChan, dnsFile, dnsCount, repeatInterval); err != nil {
 			return
 		}
-	}else{
+	} else {
 		err = errors.New(fmt.Sprintf("Unknow mode: %s", mode))
 		return
 	}
 	logger.Info("Running test", zap.Int("duration in seconds", runningTime), zap.Int("repeat interval", repeatInterval), zap.String("mode", mode))
 	timer := time.After(time.Duration(runningTime) * time.Second)
 
-	go func(){
-		select{
+	go func() {
+		select {
 		case sig := <-sigChan:
 			logger.Debug("Batch test exit for for signal", zap.Any("signal", sig))
 			done <- true
@@ -101,16 +97,16 @@ func main() {
 		case err = <-errorChan:
 			done <- true
 			return
-		case <- timer:
+		case <-timer:
 			logger.Info("Running finished")
 			done <- true
 			return
 
 		}
 	}()
-	<- done
+	<-done
 }
-func readDnsFile(dnsFile string) (ret []string, err error){
+func readDnsFile(dnsFile string) (ret []string, err error) {
 	file, err := os.Open(dnsFile) // For read access.
 	if err != nil {
 		err = errors.Wrapf(err, "Open dns file %s failed", dnsFile)
@@ -123,52 +119,52 @@ func readDnsFile(dnsFile string) (ret []string, err error){
 		err = errors.Wrapf(err, "Read dns file %s failed", dnsFile)
 		return
 	}
-	stubs := bytes.Split(data,[]byte{'\n'})
+	stubs := bytes.Split(data, []byte{'\n'})
 
 	ret = make([]string, 0)
-	for _, stub := range stubs{
-		if len(stub) > 0{
+	for _, stub := range stubs {
+		if len(stub) > 0 {
 			ret = append(ret, string(stub[:]))
 		}
 	}
-	if len(ret) == 0{
+	if len(ret) == 0 {
 		err = errors.New("empty dns file")
 	}
 	return
 }
 
-func startProxy(errorChan chan<-error, port int, portRange int, repeatInterval int) error{
+func startProxy(errorChan chan<- error, port int, portRange int, repeatInterval int) error {
 	cmd := exec.Command("dig", "+short", "test-server")
-	if addr, err := cmd.Output(); err != nil{
+	if addr, err := cmd.Output(); err != nil {
 		err = errors.Wrap(err, "retrieve remote server failed")
 		return err
-	}else{
+	} else {
 		remoteAddr := string(addr[:])
-		for i := 0; i < portRange; i++{
-			go runProxy(errorChan, remoteAddr, port + i, repeatInterval)
+		for i := 0; i < portRange; i++ {
+			go runProxy(errorChan, remoteAddr, port+i, repeatInterval)
 		}
 	}
 	return nil
 }
-func runProxy(errorChan chan<-error, addr string, port int,  repeatInterval int){
-	cmd := exec.Command("./test", "-m", "client", "-timeout", strconv.Itoa(repeatInterval), "-addr",  fmt.Sprintf("%s:%d", addr, port))
-	if err :=cmd.Run(); err != nil{
+func runProxy(errorChan chan<- error, addr string, port int, repeatInterval int) {
+	cmd := exec.Command("./test", "-m", "client", "-timeout", strconv.Itoa(repeatInterval), "-addr", fmt.Sprintf("%s:%d", addr, port))
+	if err := cmd.Run(); err != nil {
 		errorChan <- err
 	}
 }
 
-func startDns(errorChan chan<-error, dnsFile string, dnsCount int, repeatInterval int) error{
+func startDns(errorChan chan<- error, dnsFile string, dnsCount int, repeatInterval int) error {
 	domains, err := readDnsFile(dnsFile)
-	if err != nil{
+	if err != nil {
 		return err
 	}
-	for i := 0; i < dnsCount; i++{
+	for i := 0; i < dnsCount; i++ {
 		go runDns(errorChan, domains, repeatInterval, i)
 	}
 
 	return nil
 }
-func runDns(errorChan chan<-error, domains []string, repeatInterval int, idx int){
+func runDns(errorChan chan<- error, domains []string, repeatInterval int, idx int) {
 	logger := log.GetLogger()
 	logger.Info("Start dns query", zap.Int("idx", idx))
 	length := int32(len(domains))
@@ -185,20 +181,20 @@ func runDns(errorChan chan<-error, domains []string, repeatInterval int, idx int
 
 	ticker := time.Tick(time.Duration(repeatInterval) * time.Second)
 
-	for{
+	for {
 		select {
-			case <- ticker:
-				rndIdx := rand.Int31n(length)
-				domain := domains[rndIdx]
-				cmd := exec.Command("dig", "+short", domain, "@192.168.0.2")
-				logger.Debug("Dns query", zap.String("domain", domain))
-				if output, err := cmd.Output(); err != nil{
-					logger.Error("dns query failed", zap.String("domain", domain), zap.String("error", err.Error()))
-					//errorChan <- err
-					return
-				}else{
-					logger.Debug("dns response ", zap.String("domain", domain),zap.ByteString("response", output))
-				}
+		case <-ticker:
+			rndIdx := rand.Int31n(length)
+			domain := domains[rndIdx]
+			cmd := exec.Command("dig", "+short", domain, "@192.168.0.2")
+			logger.Debug("Dns query", zap.String("domain", domain))
+			if output, err := cmd.Output(); err != nil {
+				logger.Error("dns query failed", zap.String("domain", domain), zap.String("error", err.Error()))
+				//errorChan <- err
+				return
+			} else {
+				logger.Debug("dns response ", zap.String("domain", domain), zap.ByteString("response", output))
+			}
 
 		}
 

@@ -32,8 +32,8 @@ const (
 )
 
 type PacList struct {
-	Domains      map[string]bool
-	IPs          map[string]bool
+	Domains map[string]bool
+	IPs     map[string]bool
 }
 type ProxyList struct {
 	// for proxy_client
@@ -272,7 +272,6 @@ func (c *PacListMgr) CheckDomain(domain string) bool {
 }
 
 func parsePacList(path string) (ret *PacList, err error) {
-
 
 	file, err := os.Open(config.GetPathFromWorkingDir(path)) // For read access.
 	if err != nil {

@@ -62,7 +62,7 @@ func main() {
 	flag.BoolVar(&bTransparent, "t", false, "transparent")
 	flag.Parse()
 
-	logger := log.InitLogger("",logLevel, false)
+	logger := log.InitLogger("", logLevel, false)
 
 	defer func() {
 		if err != nil {
@@ -84,15 +84,15 @@ func main() {
 		if repeatTime > 0 {
 			ticker = time.NewTicker(time.Second * time.Duration(repeatTime))
 			logger.Info("Running client repeat mode", zap.Int("seconds", repeatTime), zap.Int("timeout", CONN_DEADLINE))
-			for{
-				select{
-					case <- ticker.C:
-						if err = runClient(addr, msg); err != nil {
-							return
-						}
-						case <- sigChan:
-							ticker.Stop()
-							return
+			for {
+				select {
+				case <-ticker.C:
+					if err = runClient(addr, msg); err != nil {
+						return
+					}
+				case <-sigChan:
+					ticker.Stop()
+					return
 
 				}
 			}
@@ -243,7 +243,7 @@ func listenTcp(addr string, bTransparent bool) (ln net.Listener, err error) {
 			if conn, err := ln.Accept(); err != nil {
 				if ee, ok := err.(*net.OpError); ok && ee != nil && ee.Err.Error() != "use of closed network connection" {
 					logger.Debug("Accept tcp conn failed", zap.String("error", err.Error()))
-				}else{
+				} else {
 					return
 				}
 

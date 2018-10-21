@@ -1,17 +1,16 @@
-
 // Package ipset is a library providing a wrapper to the IPtables ipset userspace utility
 package ipset
 
 import (
-"errors"
-"fmt"
-"os/exec"
-"regexp"
-"strconv"
-"strings"
+	"errors"
+	"fmt"
+	"os/exec"
+	"regexp"
+	"strconv"
+	"strings"
 
-log "github.com/Sirupsen/logrus"
-"github.com/coreos/go-semver/semver"
+	log "github.com/Sirupsen/logrus"
+	"github.com/coreos/go-semver/semver"
 )
 
 const minIpsetVersion = "6.0.0"

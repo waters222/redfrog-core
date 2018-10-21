@@ -34,8 +34,8 @@ type KcptunConfig struct {
 	Resend            int    `yaml:"resend"`
 	NoCongestion      int    `yaml:"no-congestion"`
 	ScavengeTTL       int    `yaml:"scavenge-ttl"`
-	ListenAddr  string `yaml:"listen-addr"`
-	ThreadCount int    `yaml:"thread"`
+	ListenAddr        string `yaml:"listen-addr"`
+	ThreadCount       int    `yaml:"thread"`
 }
 
 func (c *KcptunConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -69,7 +69,7 @@ func (c *KcptunConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	*c = KcptunConfig(raw)
 	return nil
 }
-func (c *KcptunConfig)Equal(other *KcptunConfig) bool{
+func (c *KcptunConfig) Equal(other *KcptunConfig) bool {
 	if c.Enable == other.Enable &&
 		c.Server == other.Server &&
 		c.Mode == other.Mode &&
@@ -93,15 +93,14 @@ func (c *KcptunConfig)Equal(other *KcptunConfig) bool{
 		c.ScavengeTTL == other.ScavengeTTL &&
 		c.ListenAddr == other.ListenAddr &&
 		c.ThreadCount == other.ThreadCount {
-			return true
+		return true
 	}
 
 	return false
 }
 
-
 type RemoteServerConfig struct {
-	Enable		bool			`yaml:"enable"`
+	Enable       bool         `yaml:"enable"`
 	UdpTimeout   int          `yaml:"udp-timeout"`
 	TcpTimeout   int          `yaml:"tcp-timeout"`
 	RemoteServer string       `yaml:"remote-server"`
@@ -123,15 +122,15 @@ func (c *RemoteServerConfig) UnmarshalYAML(unmarshal func(interface{}) error) er
 	*c = RemoteServerConfig(raw)
 	return nil
 }
-func (c *RemoteServerConfig) Equal(other *RemoteServerConfig) bool{
+func (c *RemoteServerConfig) Equal(other *RemoteServerConfig) bool {
 	if c.Enable == other.Enable &&
 		c.UdpTimeout == other.UdpTimeout &&
 		c.TcpTimeout == other.TcpTimeout &&
 		c.RemoteServer == other.RemoteServer &&
 		c.Crypt == other.Crypt &&
 		c.Password == other.Password &&
-		c.Kcptun.Equal(&other.Kcptun){
-			return true
+		c.Kcptun.Equal(&other.Kcptun) {
+		return true
 	}
 	return false
 }
@@ -141,26 +140,26 @@ type ShadowsocksConfig struct {
 }
 
 type DnsFilterConfig struct {
-	Enable			bool 		`yaml:"enable"`
-	WhiteLists		[]string	`yaml:"white-list"`
-	BlackLists		[]string	`yaml:"black-list"`
+	Enable     bool     `yaml:"enable"`
+	WhiteLists []string `yaml:"white-list"`
+	BlackLists []string `yaml:"black-list"`
 }
 
 type DnsConfig struct {
-	ListenAddr     string           `yaml:"listen-addr"`
-	LocalResolver []string       	`yaml:"local-resolver"`
-	ProxyResolver []string       	`yaml:"proxy-resolver"`
-	SendNum       int            	`yaml:"send-num"`
-	Timeout		  int			 	`yaml:"timeout"`
-	Cache         bool 				`yaml:"cache"`
-	FilterConfig  DnsFilterConfig 	`yaml:"filter"`
+	ListenAddr    string          `yaml:"listen-addr"`
+	LocalResolver []string        `yaml:"local-resolver"`
+	ProxyResolver []string        `yaml:"proxy-resolver"`
+	SendNum       int             `yaml:"send-num"`
+	Timeout       int             `yaml:"timeout"`
+	Cache         bool            `yaml:"cache"`
+	FilterConfig  DnsFilterConfig `yaml:"filter"`
 }
 
 func (c *DnsConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	type rawConfig DnsConfig
 	raw := rawConfig{
-		SendNum : 1,
-		Cache : true,
+		SendNum: 1,
+		Cache:   true,
 		Timeout: 5,
 	}
 
@@ -179,10 +178,10 @@ type Config struct {
 	ListenPort   int               `yaml:"listen-port"`
 	IgnoreIP     []string          `yaml:"ignore-ip"`
 	IgnoreIPv6   []string          `yaml:"ignore-ipv6"`
-	Interface    []string           `yaml:"interface"`
+	Interface    []string          `yaml:"interface"`
 	PacList      []string          `yaml:"pac-list"`
 	RoutingTable int               `yaml:"routing-table"`
-	IPSet		 bool			   `yaml:"ipset"`
+	IPSet        bool              `yaml:"ipset"`
 }
 
 func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -192,7 +191,7 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		RoutingTable: 100,
 		IgnoreIP:     []string{"127.0.0.0/8", "192.168.0.0/16", "172.16.0.0/12", "10.0.0.0/8", "100.64.0.0/10", "198.18.0.0/15"},
 		IgnoreIPv6:   []string{"::1/128", "fe80::/10", "fc00::/7"},
-		IPSet: 		  false,
+		IPSet:        false,
 	}
 
 	if err := unmarshal(&raw); err != nil {
@@ -225,41 +224,40 @@ func ParseClientConfig(path string) (ret Config, err error) {
 	// make sure no duplicate shadowsocks server
 	shadowsocksServer := make(map[string]bool)
 	serversFiltered := make([]RemoteServerConfig, 0)
-	for _, serverConfig := range ret.Shadowsocks.Servers{
-		if _, ok := shadowsocksServer[serverConfig.RemoteServer]; !ok{
+	for _, serverConfig := range ret.Shadowsocks.Servers {
+		if _, ok := shadowsocksServer[serverConfig.RemoteServer]; !ok {
 			shadowsocksServer[serverConfig.RemoteServer] = true
 			serversFiltered = append(serversFiltered, serverConfig)
-		}else{
+		} else {
 			log.GetLogger().Warn("Found duplicate shadowsocks server", zap.Any("config", serverConfig))
 		}
 	}
 	ret.Shadowsocks.Servers = serversFiltered
 
-
 	// check local resolver
 
-	if ret.Dns.LocalResolver == nil || len(ret.Dns.LocalResolver) == 0{
+	if ret.Dns.LocalResolver == nil || len(ret.Dns.LocalResolver) == 0 {
 		var serversBytes []byte
 		if serversBytes, err = common.PipeCommand(exec.Command("cat", "/etc/resolv.conf"),
-													exec.Command("grep", "-i", "^nameserver"),
-													exec.Command("head", "-n5"),
-													exec.Command("cut", "-d", " ", "-f2")); err != nil{
-			err = errors.Wrap(err,"extract dns server from /etc/resolve.conf failed")
+			exec.Command("grep", "-i", "^nameserver"),
+			exec.Command("head", "-n5"),
+			exec.Command("cut", "-d", " ", "-f2")); err != nil {
+			err = errors.Wrap(err, "extract dns server from /etc/resolve.conf failed")
 			return
 		}
-		if len(serversBytes) == 0{
+		if len(serversBytes) == 0 {
 			err = errors.New("extract dns server from /etc/resolve.conf failed: because its empty")
 			return
 		}
 		stubs := bytes.Split(serversBytes, []byte{'\n'})
 		ret.Dns.LocalResolver = make([]string, 0)
-		for _, stub := range stubs{
-			if len(stub) > 0{
+		for _, stub := range stubs {
+			if len(stub) > 0 {
 				stub = bytes.TrimSpace(stub)
 				ret.Dns.LocalResolver = append(ret.Dns.LocalResolver, string(stub[:]))
 			}
 		}
-		if len(ret.Dns.LocalResolver) == 0{
+		if len(ret.Dns.LocalResolver) == 0 {
 			err = errors.New("extract dns server from /etc/resolve.conf failed: format wrong")
 			return
 		}
