@@ -178,9 +178,11 @@ type Config struct {
 	PacketMask   string            `yaml:"packet-mask"`
 	ListenPort   int               `yaml:"listen-port"`
 	IgnoreIP     []string          `yaml:"ignore-ip"`
+	IgnoreIPv6   []string          `yaml:"ignore-ipv6"`
 	Interface    []string           `yaml:"interface"`
 	PacList      []string          `yaml:"pac-list"`
 	RoutingTable int               `yaml:"routing-table"`
+	IPSet		 bool			   `yaml:"ipset"`
 }
 
 func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -188,7 +190,9 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	raw := rawConfig{
 		PacketMask:   "0x1/0x1",
 		RoutingTable: 100,
-		IgnoreIP:     []string{"192.168.0.0/16", "172.16.0.0/12", "10.0.0.0/8"},
+		IgnoreIP:     []string{"127.0.0.0/8", "192.168.0.0/16", "172.16.0.0/12", "10.0.0.0/8", "100.64.0.0/10", "198.18.0.0/15"},
+		IgnoreIPv6:   []string{"::1/128", "fe80::/10", "fc00::/7"},
+		IPSet: 		  false,
 	}
 
 	if err := unmarshal(&raw); err != nil {

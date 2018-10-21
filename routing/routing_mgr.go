@@ -7,6 +7,7 @@ import (
 	"github.com/weishi258/redfrog-core/common"
 	"github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/log"
+	"github.com/weishi258/redfrog-core/ipset"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
@@ -23,30 +24,44 @@ const (
 	CHAIN_DIVERT     = "RED_FROG_DIVERT"
 	CHAIN_RED_FROG   = "RED_FROG"
 	CHAIN_PREROUTING = "PREROUTING"
+
+	IPSET_RED_FROG_V4   = "RED_FROG_IPSET_V4"
+	IPSET_RED_FROG_V6   = "RED_FROG_IPSET_V6"
 )
 const (
 	CACHE_PATH = "routing_mgr_cache.yaml"
 )
 
 type RoutingMgrCache struct {
-	IPv4 map[string][]net.IP `yaml:"ipv4"`
-	IPv6 map[string][]net.IP `yaml:"ipv6"`
+	IPv4 			map[string][]net.IP `yaml:"ipv4"`
+	IPv6 			map[string][]net.IP `yaml:"ipv6"`
 }
 
 type RoutingMgr struct {
 	sync.RWMutex
-	ipListV4 map[string][]net.IP
-	ipListV6 map[string][]net.IP
+	ipListV4 		map[string][]net.IP
+	ipListV6 		map[string][]net.IP
 
-	ip4tbl *iptables.IPTables
-	ip6tbl *iptables.IPTables
+	ip4tbl 			*iptables.IPTables
+	ip6tbl 			*iptables.IPTables
 
-	ignoreIPNet []*net.IPNet
+	ignoreIPNet 	[]*net.IPNet
+	ipSetV4			*ipset.IPSet
+	ipSetV6			*ipset.IPSet
 }
 
-func StartRoutingMgr(port int, mark string, ignoreIP []string, interfaceName[] string) (ret *RoutingMgr, err error) {
+func StartRoutingMgr(port int, mark string, ignoreIP []string, interfaceName[] string, bIPSet bool) (ret *RoutingMgr, err error) {
 	logger := log.GetLogger()
 	ret = &RoutingMgr{}
+	if bIPSet{
+		if ret.ipSetV4, err = ipset.New(IPSET_RED_FROG_V4, "hash:ip", &ipset.Params{Timeout: 0, HashFamily: "inet", MaxElem: 4294967295}); err != nil{
+			logger.Error("IPSetV4 init failed, so fallback to using iptables", zap.String("error", err.Error()))
+		}
+		if ret.ipSetV6, err = ipset.New(IPSET_RED_FROG_V6, "hash:ip", &ipset.Params{Timeout: 0, HashFamily: "inet6", MaxElem: 4294967295}); err != nil{
+			logger.Error("IPSetV6 init failed, so fallback to using ip6tables", zap.String("error", err.Error()))
+		}
+	}
+
 
 	if ignoreIP != nil {
 		ret.ignoreIPNet = make([]*net.IPNet, 0)
@@ -162,26 +177,12 @@ func (c *RoutingMgr) createRedFrogChain(isIPv6 bool) (err error) {
 		return
 	}
 
-	//if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG,  "-p", "tcp","-m", "socket", "-j", CHAIN_DIVERT); err != nil {
-	//	err = errors.Wrap(err, "Append into RED_FROG chain to avoid double tap for TProxy")
-	//	return
-	//}
-	//if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "udp", "-m", "socket", "-j", CHAIN_DIVERT); err != nil {
-	//	err = errors.Wrap(err, "Append into RED_FROG chain to avoid double tap for TProxy")
-	//	return
-	//}
-
 	if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-m", "conntrack", "--ctstate", "ESTABLISHED", "-j", "RETURN"); err != nil {
 		err = errors.Wrap(err, "Append into RED_FROG chain to return established connection")
 		return
 	}
 
 	if isIPv6{
-		if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", "::1/128", "-j", "RETURN"); err != nil {
-			err = errors.Wrap(err, "Append into RED_FROG chain to avoid loop-back addr failed")
-			return
-		}
-
 		for _, ipNet := range c.ignoreIPNet {
 			if ipNet.IP.To4() == nil {
 				if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ipNet.String(), "-j", "RETURN"); err != nil {
@@ -190,13 +191,19 @@ func (c *RoutingMgr) createRedFrogChain(isIPv6 bool) (err error) {
 				}
 			}
 		}
-
-	}else{
-		if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", "127.0.0.1/24", "-j", "RETURN"); err != nil {
-			err = errors.Wrap(err, "Append into RED_FROG chain failed to avoid loop-back addr ")
+		// add dns filter
+		if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "udp", "--dport", "53", "-j", CHAIN_TPROXY); err != nil {
+			err = errors.Wrap(err, "Append into RED_FROG chain for DNS filter failed")
 			return
 		}
-
+		if c.ipSetV6 != nil{
+			// add ipset filter
+			if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-m", "set", "--set",  IPSET_RED_FROG_V6, "dst", "-j", CHAIN_TPROXY); err != nil {
+				err = errors.Wrapf(err, "Append into RED_FROG chain %s filter failed", IPSET_RED_FROG_V6)
+				return
+			}
+		}
+	}else{
 		for _, ipNet := range c.ignoreIPNet {
 			if ipNet.IP.To4() != nil {
 				if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ipNet.String(), "-j", "RETURN"); err != nil {
@@ -205,12 +212,22 @@ func (c *RoutingMgr) createRedFrogChain(isIPv6 bool) (err error) {
 				}
 			}
 		}
+		// add dns filter
+		if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "udp", "--dport", "53", "-j", CHAIN_TPROXY); err != nil {
+			err = errors.Wrap(err, "Append into RED_FROG chain for DNS filter failed")
+			return
+		}
+
+		if c.ipSetV4 != nil{
+			// add ipset filter
+			if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-m", "set", "--set",  IPSET_RED_FROG_V4, "dst", "-j", CHAIN_TPROXY); err != nil {
+				err = errors.Wrapf(err, "Append into RED_FROG chain for %s filter failed", IPSET_RED_FROG_V4)
+				return
+			}
+		}
 	}
-	// add dns filter
-	if err = handler.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-p", "udp", "--dport", "53", "-j", CHAIN_TPROXY); err != nil {
-		err = errors.Wrap(err, "Append into RED_FROG chain for DNS filter failed")
-		return
-	}
+
+
 	return
 }
 
@@ -298,6 +315,17 @@ func (c *RoutingMgr) clearIPTables(iptbl *iptables.IPTables) {
 		logger.Error("Flush chain failed", zap.String("chain", CHAIN_TPROXY), zap.String("error", err.Error()))
 	}else if err = iptbl.DeleteChain(TABLE_MANGLE, CHAIN_TPROXY); err != nil{
 		logger.Error("Delete chain failed", zap.String("table", TABLE_MANGLE), zap.String("chain", CHAIN_TPROXY), zap.String("error", err.Error()))
+	}
+
+	if c.ipSetV4 != nil{
+		if err := c.ipSetV4.Destroy(); err != nil{
+			logger.Error("Destroy IPSetV4 failed", zap.String("name", IPSET_RED_FROG_V4),  zap.String("error", err.Error()))
+		}
+	}
+	if c.ipSetV6 != nil{
+		if err := c.ipSetV6.Destroy(); err != nil{
+			logger.Error("Destroy IPSetV6 failed", zap.String("name", IPSET_RED_FROG_V4),  zap.String("error", err.Error()))
+		}
 	}
 }
 
@@ -552,36 +580,28 @@ func (c *RoutingMgr) ReloadPacList(domains map[string]bool, ips map[string]bool,
 
 	if len(ipv4tablesList) > 0 {
 		ips := composeIPList(ipv4tablesList)
-		if err := c.ip4tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ips, "-j", CHAIN_TPROXY); err != nil {
-			logger.Error("Routing table add IPv4 failed", zap.String("ips", ips), zap.String("error", err.Error()))
-		} else {
-			logger.Debug("Routing table add IPv4 successful", zap.String("ips", ips))
+		if err := c.routingTableAddIPV4List(ips); err != nil{
+			logger.Error("ReloadPacList failed", zap.String("error", err.Error()))
 		}
 	}
 	if len(ipv6tablesList) > 0 {
 		ips := composeIPList(ipv6tablesList)
-		if err := c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ips, "-j", CHAIN_TPROXY); err != nil {
-			logger.Error("Routing table add IPv6 failed", zap.String("ips", ips), zap.String("error", err.Error()))
-		} else {
-			logger.Debug("Routing table add IPv6 successful", zap.String("ips", ips))
+		if err := c.routingTableAddIPV6List(ips); err != nil{
+			logger.Error("ReloadPacList failed", zap.String("error", err.Error()))
 		}
-
 	}
+
 	if len(ipv4tablesDeleteList) > 0 {
 		ips := composeIPList(ipv4tablesDeleteList)
-		if err := c.ip4tbl.Delete(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ips, "-j", CHAIN_TPROXY); err != nil {
-			logger.Error("Routing table delete IPv4 failed", zap.String("ips", ips), zap.String("error", err.Error()))
-		} else {
-			logger.Debug("Routing table delete IPv4 successful", zap.String("ips", ips))
+		if err := c.routingTableDelIPv4List(ips); err != nil{
+			logger.Error("ReloadPacList failed", zap.String("error", err.Error()))
 		}
 	}
 
 	if len(ipv6tablesDeleteList) > 0 {
 		ips := composeIPList(ipv6tablesDeleteList)
-		if err := c.ip6tbl.Delete(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ips, "-j", CHAIN_TPROXY); err != nil {
-			logger.Error("Routing table delete IPv6 failed", zap.String("ips", ips), zap.String("error", err.Error()))
-		} else {
-			logger.Debug("Routing table delete IPv6 successful", zap.String("ips", ips))
+		if err := c.routingTableDelIPv6List(ips); err != nil{
+			logger.Error("ReloadPacList failed", zap.String("error", err.Error()))
 		}
 
 	}
@@ -645,57 +665,165 @@ func (c *RoutingMgr) LoadPacList(domains map[string]bool, ips map[string]bool) {
 
 	if len(ipv4tablesList) > 0 {
 		ips := composeIPList(ipv4tablesList)
-		c.ip4tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ips, "-j", CHAIN_TPROXY)
-		logger.Debug("Routing table add ipv4", zap.String("ip", ips))
+		if err := c.routingTableAddIPV4List(ips); err != nil{
+			logger.Error("Load pack list failed", zap.String("error", err.Error()))
+		}
 	}
 	if len(ipv6tablesList) > 0 {
 		ips := composeIPList(ipv6tablesList)
-		c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ips, "-j", CHAIN_TPROXY)
-		logger.Debug("Routing table add ipv6", zap.String("ip", ips))
+		if err := c.routingTableAddIPV6List(ips); err != nil{
+			logger.Error("Load pack list failed", zap.String("error", err.Error()))
+		}
 	}
 
 }
-func composeIPList(ips map[string]bool) string {
+func composeIPList(ips map[string]bool) []string {
 	temp := make([]string, 0)
 	for ip := range ips {
 		temp = append(temp, ip)
 	}
-	return strings.Join(temp, ",")
+	return temp
 }
+
+
 
 func (c *RoutingMgr) routingTableAddIPV4(ip net.IP)  error {
-	logger := log.GetLogger()
-	if err := c.ip4tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
-		return errors.Wrap(err, "Routing table add IPv4 failed")
+	if c.ipSetV4 != nil{
+		if err := c.ipSetV4.Add(ip.String(), 0); err != nil{
+			return errors.Wrap(err, "Routing table add IPSetV4 failed")
+		}
+		log.GetLogger().Debug("Routing table add IPSetV4 successful", zap.String("ip", ip.String()))
+	}else{
+		if err := c.ip4tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
+			return errors.Wrap(err, "Routing table add IPv4 failed")
+		}
+		log.GetLogger().Debug("Routing table add IPv4 successful", zap.String("ip", ip.String()))
 	}
-	logger.Debug("Routing table add IPv4 successful", zap.String("ip", ip.String()))
 	return nil
 }
+func (c *RoutingMgr) routingTableAddIPV4List(ips []string)  error {
+	if c.ipSetV4 != nil{
+		for _, ip := range ips{
+			if err := c.ipSetV4.Add(ip, 0); err != nil{
+				return errors.Wrap(err, "Routing table add IPSetV4 failed")
+			}
+		}
+		log.GetLogger().Debug("Routing table add IPSetV4 successful", zap.String("ip", strings.Join(ips, ",")))
+	}else{
+		ipsStr := strings.Join(ips, ",")
+		if err := c.ip4tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ipsStr, "-j", CHAIN_TPROXY); err != nil{
+			return errors.Wrapf(err, "Routing table add IPv4 failed: %s", ipsStr)
+		}
+		log.GetLogger().Debug("Routing table add IPv4 successful", zap.String("ips", ipsStr))
+	}
+
+	return nil
+}
+
+
 func (c *RoutingMgr) routingTableAddIPV6(ip net.IP) error {
-	logger := log.GetLogger()
-	if err := c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
-		return errors.Wrap(err, "Routing table add IPv6 failed")
+	if c.ipSetV6 != nil{
+		if err := c.ipSetV6.Add(ip.String(), 0); err != nil{
+			return errors.Wrap(err, "Routing table add IPSetV6 failed")
+		}
+		log.GetLogger().Debug("Routing table add IPSetV6 successful", zap.String("ip", ip.String()))
+	}else{
+		if err := c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
+			return errors.Wrap(err, "Routing table add IPv6 failed")
+		}
+		log.GetLogger().Debug("Routing table add IPv6 successful", zap.String("ip", ip.String()))
 	}
-	logger.Debug("Routing table add IPv6 successful", zap.String("ip", ip.String()))
+
 	return nil
 }
+func (c *RoutingMgr) routingTableAddIPV6List(ips []string)  error {
+	if c.ipSetV6 != nil{
+		for _, ip := range ips{
+			if err := c.ipSetV6.Add(ip, 0); err != nil{
+				return errors.Wrap(err, "Routing table add IPSetV6 failed")
+			}
+		}
+		log.GetLogger().Debug("Routing table add IPSetV6 successful", zap.String("ip", strings.Join(ips, ",")))
+	}else{
+		ipsStr := strings.Join(ips, ",")
+		if err := c.ip6tbl.Append(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ipsStr, "-j", CHAIN_TPROXY); err != nil{
+			return errors.Wrapf(err, "Routing table add IPv6 failed: %s", ipsStr)
+		}
+		log.GetLogger().Debug("Routing table add IPv6 successful", zap.String("ips", ipsStr))
+	}
+
+	return nil
+}
+
 
 func (c *RoutingMgr) routingTableDelIPv4(ip net.IP) error {
-	logger := log.GetLogger()
-
-	if err := c.ip4tbl.Delete(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
-		return errors.Wrap(err,"Routing table del IPv4 failed")
+	if c.ipSetV4 != nil{
+		if err := c.ipSetV4.Del(ip.String()); err != nil{
+			return errors.Wrap(err, "Routing table del IPSetV4 failed")
+		}
+		log.GetLogger().Debug("Routing table del IPSetV4 successful", zap.String("ip", ip.String()))
+	}else{
+		if err := c.ip4tbl.Delete(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
+			return errors.Wrap(err,"Routing table del IPv4 failed")
+		}
+		log.GetLogger().Debug("Routing table del IPv4 successful", zap.String("ip", ip.String()))
 	}
-	logger.Debug("Routing table del IPv4 successful", zap.String("ip", ip.String()))
+
 	return nil
 }
+
+func (c *RoutingMgr) routingTableDelIPv4List(ips []string)  error {
+	if c.ipSetV4 != nil{
+		for _, ip := range ips{
+			if err := c.ipSetV4.Del(ip); err != nil{
+				return errors.Wrap(err, "Routing table del IPSetV4 failed")
+			}
+		}
+		log.GetLogger().Debug("Routing table del IPSetV4 successful", zap.String("ip", strings.Join(ips, ",")))
+	}else{
+		ipsStr := strings.Join(ips, ",")
+		if err := c.ip4tbl.Delete(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ipsStr, "-j", CHAIN_TPROXY); err != nil{
+			return errors.Wrapf(err, "Routing table delete IPv4 failed: %s", ipsStr)
+		}
+		log.GetLogger().Debug("Routing table del IPv4 successful", zap.String("ips", ipsStr))
+	}
+
+	return nil
+}
+
 
 func (c *RoutingMgr) routingTableDelIPv6(ip net.IP) error {
-	logger := log.GetLogger()
-
-	if err := c.ip6tbl.Delete(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
-		return errors.Wrap(err, "Routing table del IPv6 failed")
+	if c.ipSetV6 != nil{
+		if err := c.ipSetV6.Del(ip.String()); err != nil{
+			return errors.Wrap(err, "Routing table del IPSetV6 failed")
+		}
+		log.GetLogger().Debug("Routing table del IPSetV6 successful", zap.String("ip", ip.String()))
+	}else{
+		if err := c.ip6tbl.Delete(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ip.String(), "-j", CHAIN_TPROXY); err != nil {
+			return errors.Wrap(err, "Routing table del IPv6 failed")
+		}
+		log.GetLogger().Debug("Routing table del IPv6 successful", zap.String("ip", ip.String()))
 	}
-	logger.Debug("Routing table del IPv6 successful", zap.String("ip", ip.String()))
+
 	return nil
 }
+
+func (c *RoutingMgr) routingTableDelIPv6List(ips []string)  error {
+	if c.ipSetV6 != nil{
+		for _, ip := range ips{
+			if err := c.ipSetV6.Del(ip); err != nil{
+				return errors.Wrap(err, "Routing table del IPSetV6 failed")
+			}
+		}
+		log.GetLogger().Debug("Routing table del IPSetV6 successful", zap.String("ip", strings.Join(ips, ",")))
+	}else{
+		ipsStr := strings.Join(ips, ",")
+		if err := c.ip6tbl.Delete(TABLE_MANGLE, CHAIN_RED_FROG, "-d", ipsStr, "-j", CHAIN_TPROXY); err != nil{
+			return errors.Wrapf(err, "Routing table delete IPv6 failed: %s", ipsStr)
+		}
+		log.GetLogger().Debug("Routing table del IPv6 successful", zap.String("ips", ipsStr))
+	}
+
+	return nil
+}
+

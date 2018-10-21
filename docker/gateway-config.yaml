@@ -1,7 +1,7 @@
 packet-mask: "0x1/0x1"
 routing-table: 100
 listen-port: 9090
-ignore-ip:
+ipset: true
 dns:
   listen-addr: "192.168.0.2:53"
   proxy-resolver:

@@ -1,6 +1,9 @@
 # RedFrog
 
 Based on [miekg/dns](https://github.com/miekg/dns)
+# build docker
+docker build -t water258/alpine-iptables -f ./docker/Dockerfile .
+docker push water258/alpine-iptables:latest
 
 
 ```bash
