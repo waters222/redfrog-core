@@ -359,12 +359,12 @@ func (c *DnsServer) resolveProxyDNS(r *dns.Msg, domainName string, isBlock bool)
 						logger.Debug("ipv4 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.A).A.String()), zap.Uint32("ttl", ttl))
 
 						// ipv6 is not fully support yet, so ignore now
-						//} else if a.Header().Rrtype == dns.TypeAAAA {
+						} else if a.Header().Rrtype == dns.TypeAAAA {
 
-						//	//shouldAddCache = true
-						//	name := strings.TrimSuffix(a.Header().Name, ".")
-						//	c.routingMgr.AddIp(name, a.(*dns.AAAA).AAAA)
-						//	logger.Debug("ipv6 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.AAAA).AAAA.String()), zap.Uint32("ttl", ttl))
+							//shouldAddCache = true
+							name := strings.TrimSuffix(a.Header().Name, ".")
+							c.routingMgr.AddIp(name, a.(*dns.AAAA).AAAA)
+							logger.Debug("ipv6 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.AAAA).AAAA.String()), zap.Uint32("ttl", ttl))
 					} else if a.Header().Rrtype == dns.TypeCNAME {
 						cname := strings.TrimSuffix(a.(*dns.CNAME).Target, ".")
 						c.pacMgr.AddDomain(cname)
