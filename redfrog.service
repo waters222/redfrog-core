@@ -4,7 +4,7 @@ After=network.target
 [Service]
 ExecStart=/home/rock64/redfrog/redfrog-client-arm64 -c /home/rock64/redfrog/prod-config.yaml -d /home/rock64/redfrog -log /home/rock64/redfrog/output.log
 ExecReload=/bin/kill -s HUP $MAINPID
-ExecStop=/bin/kill -s QUIT $MAINPID
+ExecStop=/bin/kill -s TERM $MAINPID
 Type=simple
 User=root
 

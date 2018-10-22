@@ -9,6 +9,7 @@ import (
 	"github.com/weishi258/redfrog-core/ipset"
 	"github.com/weishi258/redfrog-core/log"
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"net"
@@ -16,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"github.com/vishvananda/netlink"
 )
 
 const (
@@ -27,6 +29,8 @@ const (
 
 	IPSET_RED_FROG_V4 = "RED_FROG_IPSET_V4"
 	IPSET_RED_FROG_V6 = "RED_FROG_IPSET_V6"
+
+	ROUTING_PRIORITY = 1
 )
 const (
 	CACHE_PATH = "routing_mgr_cache.yaml"
@@ -48,17 +52,40 @@ type RoutingMgr struct {
 	ignoreIPNet []*net.IPNet
 	ipSetV4     *ipset.IPSet
 	ipSetV6     *ipset.IPSet
+
+	routingTableNum   int
+	markMast		  string
 }
 
-func StartRoutingMgr(port int, mark string, ignoreIP []string, interfaceName []string, bIPSet bool) (ret *RoutingMgr, err error) {
+func StartRoutingMgr(port int, mark string, routingTableNum int, ignoreIP []string, interfaceName []string, bIPSet bool) (ret *RoutingMgr, err error) {
 	logger := log.GetLogger()
 	ret = &RoutingMgr{}
+	ret.routingTableNum = routingTableNum
+	ret.markMast = mark
+
+	if err = ret.addDelRoutingRule(mark, routingTableNum, false, true); err != nil{
+		return
+	}
+	logger.Debug("Add routing rule ipv4 successful")
+	if err = ret.addDelRoutingRoute(routingTableNum, false, true); err != nil{
+		return
+	}
+	logger.Debug("Add routing route ipv4 successful")
+	if err = ret.addDelRoutingRule(mark, routingTableNum, true, true); err != nil{
+		return
+	}
+	logger.Debug("Add routing rule ipv6 successful")
+	if err = ret.addDelRoutingRoute( routingTableNum, true, true); err != nil{
+		return
+	}
+	logger.Debug("Add routing route ipv6 successful")
+
 	if bIPSet {
 		if ret.ipSetV4, err = ipset.New(IPSET_RED_FROG_V4, "hash:ip", &ipset.Params{Timeout: 0, HashFamily: "inet", MaxElem: 4294967295}); err != nil {
-			logger.Error("IPSetV4 init failed, so fallback to using iptables", zap.String("error", err.Error()))
+			logger.Warn("IPSetV4 init failed, so fallback to using iptables", zap.String("error", err.Error()))
 		}
 		if ret.ipSetV6, err = ipset.New(IPSET_RED_FROG_V6, "hash:ip", &ipset.Params{Timeout: 0, HashFamily: "inet6", MaxElem: 4294967295}); err != nil {
-			logger.Error("IPSetV6 init failed, so fallback to using ip6tables", zap.String("error", err.Error()))
+			logger.Warn("IPSetV6 init failed, so fallback to using ip6tables", zap.String("error", err.Error()))
 		}
 	}
 
@@ -322,6 +349,20 @@ func (c *RoutingMgr) clearIPTables(iptbl *iptables.IPTables) {
 		if err := c.ipSetV6.Destroy(); err != nil {
 			logger.Error("Destroy IPSetV6 failed", zap.String("name", IPSET_RED_FROG_V4), zap.String("error", err.Error()))
 		}
+	}
+
+	if err := c.addDelRoutingRoute(c.routingTableNum, false, false); err != nil{
+		logger.Error("Delete routing route failed", zap.String("error", err.Error()))
+	}
+	if err := c.addDelRoutingRule(c.markMast, c.routingTableNum, false, false); err != nil{
+		logger.Error("Delete routing rule failed", zap.String("error", err.Error()))
+	}
+
+	if err := c.addDelRoutingRoute(c.routingTableNum, true, false); err != nil{
+		logger.Error("Delete routing route failed", zap.String("error", err.Error()))
+	}
+	if err := c.addDelRoutingRule(c.markMast, c.routingTableNum, true, false); err != nil{
+		logger.Error("Delete routing rule failed", zap.String("error", err.Error()))
 	}
 }
 
@@ -817,3 +858,126 @@ func (c *RoutingMgr) routingTableDelIPv6List(ips []string) error {
 
 	return nil
 }
+
+func (c* RoutingMgr) addDelRoutingRule(markMask string, routingTableNum int, isIPv6 bool, bAdd bool) error{
+	rule := netlink.NewRule()
+	rule.Table = routingTableNum
+	marks := strings.Split(markMask, "/")
+	if len(marks) != 2{
+		return errors.New(fmt.Sprintf("Routing mark %s is invalid", markMask))
+	}
+	mark, err := strconv.ParseInt(marks[0], 0, 32)
+	if err != nil{
+		return errors.Wrapf(err, "Routing mark parse to int failed")
+	}
+	mask, err := strconv.ParseInt(marks[1], 0, 32)
+	if err != nil{
+		return errors.Wrapf(err, "Routing mask parse to int failed")
+	}
+
+	rule.Mark = int(mark)
+	rule.Mask = int(mask)
+
+	rule.Priority = ROUTING_PRIORITY
+	var rules []netlink.Rule
+
+	if isIPv6{
+		rule.Family = netlink.FAMILY_V6
+		if rules, err = netlink.RuleList(netlink.FAMILY_V6); err != nil{
+			return errors.Wrap(err, "List routing rule from ipv6 failed")
+		}
+	}else{
+		rule.Family = netlink.FAMILY_V4
+		if rules, err = netlink.RuleList(netlink.FAMILY_V4); err != nil{
+			return errors.Wrap(err, "List routing rule from ipv4 failed")
+		}
+	}
+	for _, entry := range rules{
+		//log.GetLogger().Debug("Get rule", zap.Int("table", entry.Table), zap.Int("mark", entry.Mark), zap.Int("mask", entry.Mask))
+		if entry.Table == rule.Table &&
+			entry.Mark == rule.Mark &&
+			entry.Mask == rule.Mask{
+			// found one so to delete
+			// set family because it does not return rule family, its a BUG!!!
+			entry.Family = rule.Family
+			if err = netlink.RuleDel(&entry); err != nil{
+				return errors.Wrapf(err, "Delete routing rule failed: %s", entry.String())
+			}
+		}
+	}
+	if bAdd{
+		if err = netlink.RuleAdd(rule); err != nil{
+			return errors.Wrapf(err, "Add routing rule failed: %s", rule.String())
+		}
+	}
+
+	return nil
+}
+
+func (c* RoutingMgr) addDelRoutingRoute(routingTableNum int, isIPv6 bool, bAdd bool) error{
+	link, err := netlink.LinkByName("lo")
+	if err != nil {
+		return errors.Wrapf(err, "Get loop back dev failed")
+	}
+	var dst *net.IPNet
+	netFamily := netlink.FAMILY_V4
+	if isIPv6{
+		if _, dst, err = net.ParseCIDR("::/0"); err != nil{
+			return errors.Wrap(err, "Parse CIDR failed")
+		}
+		netFamily = netlink.FAMILY_V6
+	}else{
+		if _, dst, err = net.ParseCIDR("0.0.0.0/0"); err != nil{
+			return errors.Wrap(err, "Parse CIDR failed")
+		}
+	}
+	route := &netlink.Route{LinkIndex: link.Attrs().Index,
+		Dst: dst,
+		Table: routingTableNum,
+		Type:  unix.RTN_LOCAL,
+		Scope: unix.RT_SCOPE_HOST,
+		Priority: ROUTING_PRIORITY}
+
+	//| netlink.RT_FILTER_TYPE | netlink.RT_FILTER_SCOPE
+	if routes, err := netlink.RouteListFiltered(netFamily, route, netlink.RT_FILTER_TABLE | netlink.RT_FILTER_TYPE); err != nil{
+		return errors.Wrapf(err, "Route list failed")
+	}else{
+		for _, entry := range routes{
+			//log.GetLogger().Debug("found routing rule", zap.Int("scope", int(entry.Scope)), zap.Int("type", entry.Type), zap.Int("table", entry.Table), zap.Int("LinkIndex", entry.LinkIndex))
+			//if entry.Dst != nil{
+			//	log.GetLogger().Debug(fmt.Sprintf("dst %s", entry.Dst.String()))
+			//}
+			//if entry.Src != nil{
+			//	log.GetLogger().Debug(fmt.Sprintf("src %s", entry.Src.String()))
+			//}
+			//if entry.Gw != nil{
+			//	log.GetLogger().Debug(fmt.Sprintf("gw %s", entry.Gw.String()))
+			//}
+			if entry.Type == route.Type &&
+					entry.Table == route.Table &&
+					entry.LinkIndex == route.LinkIndex{
+				// this is to fix bug which routeList not returning dst address
+				if entry.Dst == nil{
+					entry.Dst = dst
+				}
+				if err = netlink.RouteDel(&entry); err != nil{
+					return errors.Wrapf(err, "Route delete failed: %s", entry.String())
+
+				}
+			}
+			//else{
+			//	log.GetLogger().Debug("route aa", zap.Int("scope", int(route.Scope)), zap.Int("type", route.Type), zap.Int("table", route.Table), zap.Int("LinkIndex", route.LinkIndex))
+			//}
+
+		}
+	}
+
+	if bAdd{
+		if err = netlink.RouteAdd(route); err != nil{
+			return errors.Wrapf(err, "Route add failed: %s", route.String())
+		}
+	}
+
+	return nil
+}
+

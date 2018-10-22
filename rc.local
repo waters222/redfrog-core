@@ -48,7 +48,7 @@ iptables -t nat -A POSTROUTING -o $INTERFACE_OUT   -j MASQUERADE
 sysctl -w net.ipv6.conf.all.forwarding=1
 
 ip -6 rule add fwmark 0x1/0x1 lookup 100
-ip -6 route add local ::/128 dev lo table 100
+ip -6 route add local ::/0 dev lo table 100
 
 ip6tables -t filter --flush INPUT
 ip6tables -t filter -A INPUT  -j ACCEPT

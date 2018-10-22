@@ -129,7 +129,7 @@ func StartService(configFile string) {
 	}
 	// init routing mgr
 	var routingMgr *routing.RoutingMgr
-	if routingMgr, err = routing.StartRoutingMgr(config.ListenPort, config.PacketMask, config.IgnoreIP, config.Interface, config.IPSet); err != nil {
+	if routingMgr, err = routing.StartRoutingMgr(config.ListenPort, config.PacketMask, config.RoutingTable, config.IgnoreIP, config.Interface, config.IPSet); err != nil {
 		logger.Error("Init routing manager failed", zap.String("error", err.Error()))
 		return
 	}
