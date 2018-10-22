@@ -20,3 +20,6 @@ iptables -t nat -A POSTROUTING -o $INTERFACE_OUT   -j MASQUERADE
 
 ip rule add fwmark 0x1/0x1 lookup 100
 ip route add local 0.0.0.0/0 dev lo table 100
+
+ip -6 rule add fwmark 0x1/0x1 lookup 100
+ip -6 route add local ::/0 dev lo table 100
