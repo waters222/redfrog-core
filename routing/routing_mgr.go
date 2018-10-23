@@ -566,8 +566,8 @@ func (c *RoutingMgr) ReloadPacList(domains map[string]bool, ips map[string]bool,
 			keep := false
 			if stubs := common.GenerateDomainStubs(domain); stubs != nil && len(stubs) > 0 {
 				for _, stub := range stubs {
-					if _, ok := domains[stub]; ok {
-						keep = true
+					if flag, ok := domains[stub]; ok {
+						keep = flag
 						break
 					}
 				}
@@ -592,8 +592,8 @@ func (c *RoutingMgr) ReloadPacList(domains map[string]bool, ips map[string]bool,
 			keep := false
 			if stubs := common.GenerateDomainStubs(domain); stubs != nil && len(stubs) > 0 {
 				for _, stub := range stubs {
-					if _, ok := domains[stub]; ok {
-						keep = true
+					if flag, ok := domains[stub]; ok {
+						keep = flag
 						break
 					}
 				}

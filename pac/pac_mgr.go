@@ -315,7 +315,12 @@ func (c *PacList) parsePacListLine(line []byte) (err error) {
 	}
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 0 {
 		ip := string(matches[0][1][:])
-		c.IPs[ip] = bDomainType
+		if originDomainType, ok := c.IPs[ip]; ok{
+			c.IPs[ip] = bDomainType || originDomainType
+		}else{
+			c.IPs[ip] = bDomainType
+		}
+
 		//logger.Debug("ParsePAC find ip", zap.String("line", string(line[:])), zap.String("ip", ip), zap.Bool("black_list", bDomainType))
 		return
 	}
@@ -326,7 +331,11 @@ func (c *PacList) parsePacListLine(line []byte) (err error) {
 	}
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 0 {
 		domain := string(matches[0][1][:])
-		c.Domains[domain] = bDomainType
+		if originDomainType, ok := c.Domains[domain]; ok{
+			c.Domains[domain] = bDomainType || originDomainType
+		}else{
+			c.Domains[domain] = bDomainType
+		}
 		//logger.Debug("ParsePAC find domain", zap.String("line", string(line[:])), zap.String("domain", domain), zap.Bool("black_list", bDomainType))
 		return
 	}
@@ -337,7 +346,11 @@ func (c *PacList) parsePacListLine(line []byte) (err error) {
 	}
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 0 {
 		domain := string(matches[0][1][:])
-		c.Domains[domain] = bDomainType
+		if originDomainType, ok := c.Domains[domain]; ok{
+			c.Domains[domain] = bDomainType || originDomainType
+		}else{
+			c.Domains[domain] = bDomainType
+		}
 		//logger.Debug("ParsePAC find domain", zap.String("line", string(line[:])), zap.String("domain", domain), zap.Bool("black_list", bDomainType))
 	} else {
 		//logger.Debug("ParsePAC can not find domain or ip", zap.String("line", string(line[:])))
