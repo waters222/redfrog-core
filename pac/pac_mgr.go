@@ -13,7 +13,6 @@ import (
 	"os"
 	"regexp"
 	"sync"
-	"time"
 )
 
 const MONITOR_INTERVAL = 5
@@ -45,100 +44,11 @@ type PacListMgr struct {
 	// for reading paclist and compare
 	sync.Mutex
 	pacLists map[string]*PacList
-
-	ticker *time.Ticker
-
 	proxyList ProxyList
 
 	// routing table
 	routingMgr *routing.RoutingMgr
 }
-
-//
-//func (c *PacListMgr)startMonitorPacList(){
-//	logger := log.GetLogger()
-//
-//	go func(){
-//		for{
-//			select {
-//				case <- c.ticker.C:
-//					bPacListHasChanged := false
-//					func(){
-//						c.pacListsMux.Lock()
-//						defer c.pacListsMux.Unlock()
-//
-//						for path, pacList := range c.pacLists{
-//							if lastModified, err := os.Stat(path); err != nil{
-//								logger.Error("Get file stat failed", zap.String("file", path), zap.String("error", err.Error()))
-//							}else{
-//								if pacList.lastModified.Before(lastModified.ModTime()){
-//									logger.Info("Pac list file has modified since last time, so re-evaluation", zap.String("file", path))
-//									pacList.lastModified = lastModified.ModTime()
-//									// lets do re-loading
-//
-//									if newPacList, err := parsePacList(path); err == nil{
-//										if !pacList.equal(newPacList){
-//											// its not equal so using the new domains
-//											pacList.Domains = newPacList.Domains
-//											pacList.IPs = newPacList.IPs
-//											// set changed flag to true
-//											bPacListHasChanged = true
-//											logger.Info("Pac file content has changed", zap.String("file", path))
-//										}
-//									}
-//								}
-//							}
-//						}
-//					}()
-//
-//					if bPacListHasChanged{
-//						//
-//						c.composeProxyList()
-//					}
-//			}
-//		}
-//	}()
-//	logger.Info("Start pac list files monitor")
-//}
-//func (c *PacListMgr)stopMonitorPackList(){
-//	logger := log.GetLogger()
-//	c.ticker.Stop()
-//	logger.Info("Stop pac list files monitor")
-//}
-
-//func (c *PacListMgr) composeProxyList(reload bool) {
-//	logger := log.GetLogger()
-//
-//	proxyDomains := make(map[string]bool)
-//	proxyIPs := make(map[string]bool)
-//
-//	func() {
-//		c.Lock()
-//		defer c.Unlock()
-//		for _, pacList := range c.pacLists {
-//			for domain, flag := range pacList.Domains {
-//				proxyDomains[domain] = flag
-//			}
-//			for ip, flag := range pacList.IPs {
-//				proxyIPs[ip] = flag
-//			}
-//		}
-//	}()
-//
-//	c.proxyList.Lock()
-//	defer c.proxyList.Unlock()
-//	c.proxyList.proxyDomains = proxyDomains
-//	c.proxyList.proxyIPs = proxyIPs
-//
-//	logger.Info("Composing new proxy_client list finished, start to populate routing table")
-//	// now lets re-populate routing table
-//	if reload{
-//
-//	}else{
-//		c.routingMgr.LoadPacList(proxyDomains, proxyIPs)
-//	}
-//
-//}
 
 func StartPacListMgr(routingMgr *routing.RoutingMgr) (ret *PacListMgr, err error) {
 	logger := log.GetLogger()
@@ -150,7 +60,6 @@ func StartPacListMgr(routingMgr *routing.RoutingMgr) (ret *PacListMgr, err error
 	ret.pacLists = make(map[string]*PacList)
 	ret.proxyList.proxyDomains = make(map[string]bool)
 	ret.proxyList.proxyIPs = make(map[string]bool)
-	ret.ticker = time.NewTicker(time.Second * MONITOR_INTERVAL)
 
 	logger.Info("Start pac List Manager successful")
 	return
@@ -239,10 +148,10 @@ func (c *PacListMgr) loadPacLists(paths []string, reload bool) {
 	return
 }
 
-func (c *PacListMgr) AddDomain(domain string) {
+func (c *PacListMgr) AddDomain(domain string, flag bool) {
 	c.proxyList.Lock()
 	defer c.proxyList.Unlock()
-	c.proxyList.proxyDomains[domain] = true
+	c.proxyList.proxyDomains[domain] = flag
 }
 
 func (c *PacListMgr) CheckDomain(domain string) bool {
@@ -352,7 +261,7 @@ func (c *PacList) parsePacListLine(line []byte) (err error) {
 	}
 
 	// white domain
-	//bDomainType := common.DOMAIN_BLACK_LIST
+	bDomainType := common.DOMAIN_BLACK_LIST
 	if re, err = regexp.Compile(regex_whiteRegex_); err != nil {
 		return errors.Wrap(err, fmt.Sprintf("Compile regex failed: %s", regex_whiteRegex_))
 	}
@@ -361,9 +270,9 @@ func (c *PacList) parsePacListLine(line []byte) (err error) {
 	if matches := re.FindAllSubmatch(line, -1); len(matches) > 0 {
 		if len(matches[0][1]) > 0 {
 			// ignore white list
-			return
-			//matchByte = matches[0][1]
-			//bDomainType = common.DOMAIN_WHITE_LIST
+			//return
+			matchByte = matches[0][1]
+			bDomainType = common.DOMAIN_WHITE_LIST
 		}
 
 	}
@@ -406,7 +315,7 @@ func (c *PacList) parsePacListLine(line []byte) (err error) {
 	}
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 0 {
 		ip := string(matches[0][1][:])
-		c.IPs[ip] = true
+		c.IPs[ip] = bDomainType
 		//logger.Debug("ParsePAC find ip", zap.String("line", string(line[:])), zap.String("ip", ip), zap.Bool("black_list", bDomainType))
 		return
 	}
@@ -417,7 +326,7 @@ func (c *PacList) parsePacListLine(line []byte) (err error) {
 	}
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 0 {
 		domain := string(matches[0][1][:])
-		c.Domains[domain] = true
+		c.Domains[domain] = bDomainType
 		//logger.Debug("ParsePAC find domain", zap.String("line", string(line[:])), zap.String("domain", domain), zap.Bool("black_list", bDomainType))
 		return
 	}
@@ -428,7 +337,7 @@ func (c *PacList) parsePacListLine(line []byte) (err error) {
 	}
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 0 {
 		domain := string(matches[0][1][:])
-		c.Domains[domain] = true
+		c.Domains[domain] = bDomainType
 		//logger.Debug("ParsePAC find domain", zap.String("line", string(line[:])), zap.String("domain", domain), zap.Bool("black_list", bDomainType))
 	} else {
 		//logger.Debug("ParsePAC can not find domain or ip", zap.String("line", string(line[:])))

@@ -21,6 +21,9 @@ const (
 	UDP_OOB_BUFFER_SIZE = 1024 * 2
 
 	CHANNEL_QUEUE_LENGTH = 5
+
+	DOMAIN_BLACK_LIST = true
+	DOMAIN_WHITE_LIST = false
 )
 
 type DNSServerInterface interface {

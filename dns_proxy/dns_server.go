@@ -367,7 +367,7 @@ func (c *DnsServer) resolveProxyDNS(r *dns.Msg, domainName string, isBlock bool)
 							logger.Debug("ipv6 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.AAAA).AAAA.String()), zap.Uint32("ttl", ttl))
 					} else if a.Header().Rrtype == dns.TypeCNAME {
 						cname := strings.TrimSuffix(a.(*dns.CNAME).Target, ".")
-						c.pacMgr.AddDomain(cname)
+						c.pacMgr.AddDomain(cname, common.DOMAIN_BLACK_LIST)
 						logger.Debug("Add CNAME to list", zap.String("CNAME", cname))
 					}
 
