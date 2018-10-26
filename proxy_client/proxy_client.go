@@ -301,7 +301,23 @@ func (c *ProxyClient) HandleUDP(buffer []byte, srcAddr *net.UDPAddr, dstAddr *ne
 	if dstAddr.Port == 53 {
 		msg := new(dns.Msg)
 		if err := msg.Unpack(buffer[:dataLen]); err != nil {
-			logger.Error("unpack DNS packet failed", zap.String("src", srcAddr.String()), zap.String("DNS server", dstAddr.String()), zap.Int("udp size", dataLen), zap.String("error", err.Error()))
+			if len(msg.Question) > 0{
+				logger.Info("unpack DNS packet failed",
+					zap.String("src", srcAddr.String()),
+					zap.String("DNS server", dstAddr.String()),
+					zap.String("domain", msg.Question[0].Name),
+					zap.Int("udp size", dataLen), zap.String("error", err.Error()))
+			}else{
+				logger.Info("unpack DNS packet failed",
+					zap.String("src", srcAddr.String()),
+					zap.String("DNS server", dstAddr.String()),
+					zap.Int("udp size", dataLen), zap.String("error", err.Error()))
+			}
+			x := new(dns.Msg)
+			x.SetRcodeFormatError(msg)
+			if responseByte, _ := x.Pack(); len(responseByte) > 0{
+				c.udpBackend_.WriteBackUDPPayload(c, srcAddr, dstAddr, responseByte, time.Duration(c.dnsMockTimeout)*time.Second)
+			}
 			return
 		}
 		if err := c.relayDNS(srcAddr, dstAddr, msg); err != nil {

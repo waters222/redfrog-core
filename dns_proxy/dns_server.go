@@ -359,7 +359,7 @@ func (c *DnsServer) resolveProxyDNS(r *dns.Msg, domainName string, isBlock bool)
 						logger.Debug("ipv4 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.A).A.String()), zap.Uint32("ttl", ttl))
 
 						// ipv6 is not fully support yet, so ignore now
-						} else if a.Header().Rrtype == dns.TypeAAAA {
+					} else if a.Header().Rrtype == dns.TypeAAAA {
 
 							//shouldAddCache = true
 							name := strings.TrimSuffix(a.Header().Name, ".")
@@ -390,9 +390,9 @@ func (c *DnsServer) resolveLocalDNS(r *dns.Msg) (*dns.Msg, error) {
 		defer cancel()
 		if response, t, err := resolver.client.ExchangeContext(ctx, r, resolver.addr); err != nil {
 			if len(r.Question) > 0 {
-				return nil, errors.Wrapf(err, "Dns query for local resolver failed: %s", r.Question[0].String())
+				return nil, errors.Wrapf(err, "Dns query for local resolver failed, timeout: %s, error: %s", c.timeout.String(), r.Question[0].String())
 			} else {
-				return nil, errors.Wrapf(err, "Dns query for local resolver failed")
+				return nil, errors.Wrapf(err, "Dns query for local resolver failed, timeout: %s", c.timeout.String())
 			}
 
 		} else {
@@ -435,8 +435,7 @@ func (c *DnsServer) writeResponse(w dns.ResponseWriter, r *dns.Msg, resDns *dns.
 		}
 	}
 	// well its from standard gateway
-	w.WriteMsg(resDns)
-	return nil, nil
+	return nil, w.WriteMsg(resDns)
 }
 
 func (c *DnsServer) ServerDNSPacket(msg *dns.Msg) ([]byte, error) {
@@ -476,5 +475,7 @@ func (c *DnsServer) processDNSRequest(w dns.ResponseWriter, r *dns.Msg) ([]byte,
 }
 
 func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
-	c.processDNSRequest(w, r)
+	if _, err := c.processDNSRequest(w, r); err != nil{
+		log.GetLogger().Error("Server local DNS failed", zap.String("error", err.Error()))
+	}
 }

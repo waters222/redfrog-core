@@ -340,17 +340,17 @@ func (c *dnsProxyResolver) resolveDNS(headerLen int, payload []byte, timeout tim
 		c.dnsQueryMapMux.Unlock()
 
 		// set timeout for dns query
-		timeout := time.NewTimer(timeout)
+		timeoutTimer := time.NewTimer(timeout)
 		select {
 		case dnsResponse := <-sig:
 			return dnsResponse, nil
-		case <-timeout.C:
+		case <-timeoutTimer.C:
 			// remove from map and recycle id after timeout triggered
 			c.dnsQueryMapMux.Lock()
 			defer c.dnsQueryMapMux.Unlock()
 			delete(c.dnsQueryMap, dnsId)
 			c.dnsIdQueue <- dnsId
-			return nil, errors.New("read dns from remote proxy timeout")
+			return nil, errors.New(fmt.Sprintf("read dns from remote proxy timeout: %s, dnsID: %d", timeout.String(), dnsId))
 		}
 	}
 }
