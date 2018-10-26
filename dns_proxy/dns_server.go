@@ -388,17 +388,15 @@ func (c *DnsServer) resolveLocalDNS(r *dns.Msg) (*dns.Msg, error) {
 	if resolver := c.getResolver(false); resolver != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 		defer cancel()
-		if response, t, err := resolver.client.ExchangeContext(ctx, r, resolver.addr); err != nil {
+		response, _, err := resolver.client.ExchangeContext(ctx, r, resolver.addr)
+		if err != nil {
 			if len(r.Question) > 0 {
-				return nil, errors.Wrapf(err, "Dns query for local resolver failed, timeout: %s, error: %s", c.timeout.String(), r.Question[0].String())
+				logger.Info("Dns query for local resolver failed", zap.String("domain", r.Question[0].String()), zap.String("error", err.Error()))
 			} else {
-				return nil, errors.Wrapf(err, "Dns query for local resolver failed, timeout: %s", c.timeout.String())
+				logger.Info("Dns query for local resolver failed", zap.String("error", err.Error()))
 			}
-
-		} else {
-			logger.Debug("Dns query for local resolver successful", zap.String("dns_server", resolver.addr), zap.Duration("time", t))
-			return response, nil
 		}
+		return response, nil
 	} else {
 		return nil, errors.New("can not get local dns resolver")
 	}
