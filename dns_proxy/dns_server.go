@@ -388,15 +388,16 @@ func (c *DnsServer) resolveLocalDNS(r *dns.Msg) (*dns.Msg, error) {
 	if resolver := c.getResolver(false); resolver != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 		defer cancel()
-		response, _, err := resolver.client.ExchangeContext(ctx, r, resolver.addr)
-		if err != nil {
+		if response, _, err := resolver.client.ExchangeContext(ctx, r, resolver.addr); err != nil{
 			if len(r.Question) > 0 {
 				logger.Info("Dns query for local resolver failed", zap.String("domain", r.Question[0].String()), zap.String("error", err.Error()))
 			} else {
 				logger.Info("Dns query for local resolver failed", zap.String("error", err.Error()))
 			}
+			return nil, err
+		}else{
+			return response, nil
 		}
-		return response, nil
 	} else {
 		return nil, errors.New("can not get local dns resolver")
 	}
