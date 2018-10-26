@@ -307,6 +307,7 @@ func (c *dnsProxyResolver) processDns(buffer []byte, dataLen int) {
 	resDns := new(dns.Msg)
 	if err := resDns.Unpack(data); err != nil {
 		logger.Info("DNS unpack for proxy resolver failed", zap.String("error", err.Error()))
+		return
 	}
 
 	c.dnsQueryMapMux.Lock()
@@ -320,6 +321,7 @@ func (c *dnsProxyResolver) processDns(buffer []byte, dataLen int) {
 	} else {
 		c.dnsQueryMapMux.Unlock()
 	}
+
 }
 
 func (c *dnsProxyResolver) resolveDNS(headerLen int, payload []byte, timeout time.Duration, addr *net.UDPAddr) (*dns.Msg, error) {
