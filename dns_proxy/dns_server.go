@@ -384,17 +384,15 @@ func (c *DnsServer) resolveProxyDNS(r *dns.Msg, domainName string, isBlock bool)
 }
 
 func (c *DnsServer) resolveLocalDNS(r *dns.Msg) (*dns.Msg, error) {
-	logger := log.GetLogger()
 	if resolver := c.getResolver(false); resolver != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 		defer cancel()
 		if response, _, err := resolver.client.ExchangeContext(ctx, r, resolver.addr); err != nil{
 			if len(r.Question) > 0 {
-				logger.Info("Dns query for local resolver failed", zap.String("domain", r.Question[0].String()), zap.String("error", err.Error()))
+				return nil, errors.Wrapf(err, "Dns query for local resolver failed, domain: %s", r.Question[0].String())
 			} else {
-				logger.Info("Dns query for local resolver failed", zap.String("error", err.Error()))
+				return nil, errors.Wrap(err, "Dns query for local resolver failed")
 			}
-			return nil, err
 		}else{
 			return response, nil
 		}
