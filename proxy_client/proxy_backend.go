@@ -270,13 +270,17 @@ func (c *dnsProxyResolver) Stop() error {
 func (c *dnsProxyResolver) processResponse() {
 	logger := log.GetLogger()
 	// set read timeout to forever
-	c.dnsConn.SetReadDeadline(time.Time{})
+	//c.dnsConn.SetReadDeadline(time.Time{})
 	for {
 		buffer := c.buffer.Get()
 		if dataLen, _, err := c.dnsConn.ReadFrom(buffer); err != nil {
 			c.buffer.Put(buffer)
-			logger.Error("Dns resolver read failed", zap.String("error", err.Error()))
-			return
+			// check if its an timeout error so ignore and continue
+			if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
+				// something is wrong with this connection
+				logger.Panic("Dns resolver read failed", zap.String("error", err.Error()))
+				return
+			}
 		} else {
 			go c.processDns(buffer, dataLen)
 		}
