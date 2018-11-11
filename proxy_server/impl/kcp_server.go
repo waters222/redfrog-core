@@ -2,8 +2,8 @@ package impl
 
 import (
 	"github.com/pkg/errors"
-	"github.com/shadowsocks/go-shadowsocks2/socks"
 	"github.com/weishi258/kcp-go-ng"
+	"github.com/weishi258/redfrog-core/common"
 	"github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/kcp_helper"
 	"github.com/weishi258/redfrog-core/log"
@@ -119,50 +119,55 @@ func (c *KCPServer) handleRelay(kcpConn *smux.Stream) {
 
 	defer kcpConn.Close()
 
-	dstAddr, err := socks.ReadAddr(kcpConn)
+	isUDP, dstAddr, err := common.ReadShadowsocksHeader(kcpConn)
 	if err != nil {
 		logger.Error("Kcp read dst addr failed", zap.String("error", err.Error()))
 		return
 	}
+	if isUDP{
 
-	remoteConn, err := net.Dial("tcp", dstAddr.String())
-	if err != nil {
-		logger.Info("Kcp dial dst failed", zap.String("error", err.Error()))
-		return
-	}
-	//logger.Debug("tcp dial remote", zap.String("addr", dstAddr.String()))
-	defer remoteConn.Close()
-	remoteConn.SetWriteDeadline(time.Now().Add(c.timeout))
-	remoteConn.(*net.TCPConn).SetKeepAlive(true)
+	}else{
 
-	// starting relay data
-	ch := make(chan res)
+		remoteConn, err := net.Dial("tcp", dstAddr.String())
+		if err != nil {
+			logger.Info("Kcp dial dst failed", zap.String("error", err.Error()))
+			return
+		}
+		//logger.Debug("tcp dial remote", zap.String("addr", dstAddr.String()))
+		defer remoteConn.Close()
+		remoteConn.SetWriteDeadline(time.Now().Add(c.timeout))
+		remoteConn.(*net.TCPConn).SetKeepAlive(true)
 
-	go func() {
-		outboundSize, err := io.Copy(remoteConn, kcpConn)
+		// starting relay data
+		ch := make(chan res)
+
+		go func() {
+			outboundSize, err := io.Copy(remoteConn, kcpConn)
+			remoteConn.SetDeadline(time.Now())
+			kcpConn.Close()
+
+			//remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+			//kcpConn.SetDeadline(time.Now())  // wake up the other goroutine blocking on left
+			ch <- res{outboundSize, err}
+		}()
+
+		inboundSize, err := io.Copy(kcpConn, remoteConn)
 		remoteConn.SetDeadline(time.Now())
 		kcpConn.Close()
 
 		//remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 		//kcpConn.SetDeadline(time.Now())  // wake up the other goroutine blocking on left
-		ch <- res{outboundSize, err}
-	}()
+		rs := <-ch
 
-	inboundSize, err := io.Copy(kcpConn, remoteConn)
-	remoteConn.SetDeadline(time.Now())
-	kcpConn.Close()
-
-	//remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-	//kcpConn.SetDeadline(time.Now())  // wake up the other goroutine blocking on left
-	rs := <-ch
-
-	if err == nil {
-		err = rs.Err
+		if err == nil {
+			err = rs.Err
+		}
+		if err != nil {
+			logger.Debug("Kcp relay finished", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize), zap.String("error", err.Error()))
+		} else {
+			logger.Debug("Kcp relay finished", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize))
+		}
 	}
-	if err != nil {
-		logger.Debug("Kcp relay finished", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize), zap.String("error", err.Error()))
-	} else {
-		logger.Debug("Kcp relay finished", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize))
-	}
+
 
 }

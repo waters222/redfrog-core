@@ -3,10 +3,16 @@ package common
 import (
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/shadowsocks/go-shadowsocks2/socks"
 	"io"
 	"io/ioutil"
+	"net"
 	"os/exec"
 	"strings"
+)
+const(
+	AtTypeUdpIpv4 = 51
+	AtTypeUdpIpv6 = 52
 )
 
 func GenerateDomainStubs(domain string) []string {
@@ -67,4 +73,36 @@ func PipeCommand(cmds ...*exec.Cmd) (output []byte, err error) {
 	}
 
 	return
+}
+
+func ReadShadowsocksHeader(r io.Reader) ( bool, socks.Addr, error){
+	b := make([]byte, socks.MaxAddrLen)
+	_, err := io.ReadFull(r, b[:1]) // read 1st byte for address type
+	if err != nil {
+		return false, nil, err
+	}
+
+	switch b[0] {
+	case socks.AtypDomainName:
+		_, err = io.ReadFull(r, b[1:2]) // read 2nd byte for domain length
+		if err != nil {
+			return false, nil, err
+		}
+		_, err = io.ReadFull(r, b[2:2+int(b[1])+2])
+		return false, b[:1+1+int(b[1])+2], err
+	case socks.AtypIPv4:
+		_, err = io.ReadFull(r, b[1:1+net.IPv4len+2])
+		return false, b[:1+net.IPv4len+2], err
+	case socks.AtypIPv6:
+		_, err = io.ReadFull(r, b[1:1+net.IPv6len+2])
+		return false, b[:1+net.IPv6len+2], err
+	case AtTypeUdpIpv4:
+		_, err = io.ReadFull(r, b[1:1+net.IPv4len+2])
+		return true, b[:1+net.IPv4len+2], err
+	case AtTypeUdpIpv6:
+		_, err = io.ReadFull(r, b[1:1+net.IPv6len+2])
+		return true, b[:1+net.IPv6len+2], err
+	}
+
+	return false, nil, socks.ErrAddressNotSupported
 }

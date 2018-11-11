@@ -157,49 +157,91 @@ func (c *ProxyServer) handleTCP(conn net.Conn) {
 	conn = c.cipher.StreamConn(conn)
 	//conn.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
 
-	dstAddr, err := socks.ReadAddr(conn)
+	isUDP, dstAddr, err := common.ReadShadowsocksHeader(conn)
 	if err != nil {
 		logger.Error("TCP read dst addr failed", zap.String("error", err.Error()))
 		return
 	}
-	remoteConn, err := net.Dial("tcp4", dstAddr.String())
-	if err != nil {
-		logger.Info("TCP dial dst failed", zap.String("error", err.Error()))
-		return
-	}
-	//logger.Debug("tcp dial remote", zap.String("addr", dstAddr.String()))
-	defer remoteConn.Close()
-	//remoteConn.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
-	remoteConn.(*net.TCPConn).SetKeepAlive(true)
+	if isUDP{
+		//remoteConn, err := net.Dial("tcp4", dstAddr.String())
+		//if err != nil {
+		//	logger.Info("TCP dial dst failed", zap.String("error", err.Error()))
+		//	return
+		//}
+		////logger.Debug("tcp dial remote", zap.String("addr", dstAddr.String()))
+		//defer remoteConn.Close()
+		////remoteConn.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
+		//remoteConn.(*net.TCPConn).SetKeepAlive(true)
+		//
+		//// starting relay data
+		//ch := make(chan res)
+		//
+		//go func() {
+		//	outboundSize, err := io.Copy(remoteConn, conn)
+		//	remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+		//	conn.SetDeadline(time.Now())       // wake up the other goroutine blocking on left
+		//	ch <- res{outboundSize, err}
+		//}()
+		//
+		//inboundSize, err := io.Copy(conn, remoteConn)
+		//remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+		//conn.SetDeadline(time.Now())       // wake up the other goroutine blocking on left
+		//rs := <-ch
+		//
+		//if err == nil {
+		//	err = rs.Err
+		//}
+		//
+		//if err != nil {
+		//	if ee, ok := err.(net.Error); ok && ee.Timeout() {
+		//		logger.Debug("TCP relay successful", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize))
+		//	} else {
+		//		logger.Error("TCP relay failed", zap.String("error", err.Error()))
+		//	}
+		//} else {
+		//	logger.Debug("TCP relay successful", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize))
+		//}
+	}else{
+		remoteConn, err := net.Dial("tcp4", dstAddr.String())
+		if err != nil {
+			logger.Info("TCP dial dst failed", zap.String("error", err.Error()))
+			return
+		}
+		//logger.Debug("tcp dial remote", zap.String("addr", dstAddr.String()))
+		defer remoteConn.Close()
+		//remoteConn.SetWriteDeadline(time.Now().Add(c.tcpTimeout_))
+		remoteConn.(*net.TCPConn).SetKeepAlive(true)
 
-	// starting relay data
-	ch := make(chan res)
+		// starting relay data
+		ch := make(chan res)
 
-	go func() {
-		outboundSize, err := io.Copy(remoteConn, conn)
+		go func() {
+			outboundSize, err := io.Copy(remoteConn, conn)
+			remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
+			conn.SetDeadline(time.Now())       // wake up the other goroutine blocking on left
+			ch <- res{outboundSize, err}
+		}()
+
+		inboundSize, err := io.Copy(conn, remoteConn)
 		remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 		conn.SetDeadline(time.Now())       // wake up the other goroutine blocking on left
-		ch <- res{outboundSize, err}
-	}()
+		rs := <-ch
 
-	inboundSize, err := io.Copy(conn, remoteConn)
-	remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
-	conn.SetDeadline(time.Now())       // wake up the other goroutine blocking on left
-	rs := <-ch
-
-	if err == nil {
-		err = rs.Err
-	}
-
-	if err != nil {
-		if ee, ok := err.(net.Error); ok && ee.Timeout() {
-			logger.Debug("TCP relay successful", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize))
-		} else {
-			logger.Error("TCP relay failed", zap.String("error", err.Error()))
+		if err == nil {
+			err = rs.Err
 		}
-	} else {
-		logger.Debug("TCP relay successful", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize))
+
+		if err != nil {
+			if ee, ok := err.(net.Error); ok && ee.Timeout() {
+				logger.Debug("TCP relay successful", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize))
+			} else {
+				logger.Error("TCP relay failed", zap.String("error", err.Error()))
+			}
+		} else {
+			logger.Debug("TCP relay successful", zap.Int64("inboundSize", inboundSize), zap.Int64("outboundSize", rs.OutboundSize))
+		}
 	}
+
 }
 
 func (c *ProxyServer) startUDPListener() (err error) {
