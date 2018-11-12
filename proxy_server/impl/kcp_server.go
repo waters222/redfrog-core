@@ -140,6 +140,7 @@ func (c *KCPServer) handleUDPOverTCP(conn *smux.Stream, dstAddrBytes socks.Addr)
 			c.udpLeakyBuffer.Put(copyBuffer)
 		}()
 		for {
+			copyBuffer = copyBuffer[:cap(copyBuffer)]
 			dataLen, _, err := remoteConn.ReadFrom(copyBuffer)
 			if err != nil {
 				if err != io.EOF {
@@ -160,6 +161,7 @@ func (c *KCPServer) handleUDPOverTCP(conn *smux.Stream, dstAddrBytes socks.Addr)
 	var packetSize int
 	defer remoteConn.SetReadDeadline(time.Now())
 	for err == nil {
+		buffer = buffer[:cap(buffer)]
 		if packetSize, err = common.ReadUdpOverTcp(conn, buffer); err != nil {
 			if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
 				logger.Error("Read UDP over TCP failed", zap.String("addr", dstAddrBytes.String()), zap.Int("packetSize", packetSize), zap.String("error", err.Error()))

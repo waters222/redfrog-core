@@ -457,6 +457,7 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 				defer c.udpBuffer_.Put(buffer)
 				var n int
 				for {
+					buffer = buffer[:cap(buffer)]
 					n, _, err = udpProxy.dstUdp_.ReadFrom(buffer)
 					udpProxy.dstUdp_.SetReadDeadline(time.Now().Add(udpProxy.timeout))
 					if err != nil {
@@ -469,13 +470,15 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 					//logger.Debug("Read from remote", zap.Int("size", n))
 					// now lets write back
 					headerLen := len(udpProxy.header_)
+					writeBuffer := make([]byte, n - headerLen)
+					copy(writeBuffer, buffer[headerLen:n])
 					if n > headerLen {
 						if srcAddr == nil {
 							// its dns so deal accordingly
-							c.processDNSResponse(buffer[headerLen:n])
+							c.processDNSResponse(writeBuffer)
 						} else {
 							// regular udp proxy
-							c.udpBackend_.WriteBackUDPPayload(c, srcAddr, dstAddr, buffer[headerLen:n], udpProxy.timeout)
+							c.udpBackend_.WriteBackUDPPayload(c, srcAddr, dstAddr, writeBuffer, udpProxy.timeout)
 						}
 					} else {
 						logger.Info("UDP read from remote too small, so not write back", zap.Int("n", n), zap.Int("headerLen", headerLen))
@@ -521,7 +524,7 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 				defer c.udpBuffer_.Put(buffer)
 				var n int
 				for {
-
+					buffer = buffer[:cap(buffer)]
 					if udpProxy.dstKcp_ != nil {
 						n, err = common.ReadUdpOverTcp(udpProxy.dstKcp_, buffer)
 						udpProxy.dstKcp_.SetReadDeadline(time.Now().Add(udpProxy.timeout))
@@ -537,12 +540,14 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 						}
 						return
 					}
+					writeBuffer := make([]byte, n)
+					copy(writeBuffer, buffer[:n])
 					if srcAddr == nil {
 						// its dns so deal accordingly
-						c.processDNSResponse(buffer[:n])
+						c.processDNSResponse(writeBuffer)
 					} else {
 						// regular udp proxy
-						c.udpBackend_.WriteBackUDPPayload(c, srcAddr, dstAddr, buffer[:n], udpProxy.timeout)
+						c.udpBackend_.WriteBackUDPPayload(c, srcAddr, dstAddr, writeBuffer, udpProxy.timeout)
 					}
 
 				}

@@ -169,6 +169,7 @@ func (c *ProxyServer) handleUDPOverTCP(conn net.Conn, dstAddrBytes socks.Addr) {
 			c.udpLeakyBuffer.Put(copyBuffer)
 		}()
 		for {
+			copyBuffer = copyBuffer[:cap(copyBuffer)]
 			dataLen, _, err := remoteConn.ReadFrom(copyBuffer)
 			if err != nil {
 				if err != io.EOF {
@@ -190,6 +191,7 @@ func (c *ProxyServer) handleUDPOverTCP(conn net.Conn, dstAddrBytes socks.Addr) {
 	var packetSize int
 	defer remoteConn.SetReadDeadline(time.Now())
 	for err == nil {
+		buffer = buffer[:cap(buffer)]
 		if packetSize, err = common.ReadUdpOverTcp(conn, buffer); err != nil {
 			if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
 				logger.Error("Read UDP over TCP failed", zap.String("addr", dstAddrBytes.String()), zap.Int("packetSize", packetSize), zap.String("error", err.Error()))
@@ -353,6 +355,7 @@ func (c *ProxyServer) copyFromRemote(entry *udpNatMapEntry, keyStr string, dstAd
 
 	for {
 		// let dns query fast expire
+		remoteBuffer = remoteBuffer[:cap(remoteBuffer)]
 		if dataLen, _, err := entry.conn.ReadFrom(remoteBuffer); err != nil {
 			if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
 				logger.Error("UDP read from remote failed", zap.String("error", err.Error()))
