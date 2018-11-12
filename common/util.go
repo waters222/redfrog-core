@@ -111,11 +111,12 @@ func ReadShadowsocksHeader(r io.Reader) (bool, socks.Addr, error) {
 
 func ReadUdpOverTcp(r io.Reader, buffer []byte) (int, error) {
 	// read udp packet size info
-	_, err := io.ReadFull(r, buffer[:2])
+	lenBuffer := buffer[:2]
+	_, err := io.ReadFull(r, lenBuffer)
 	if err != nil {
 		return 0, err
 	}
-	packetSize := int(binary.BigEndian.Uint16(buffer[:2]))
+	packetSize := int(binary.BigEndian.Uint16(lenBuffer))
 	if packetSize <= len(buffer){
 		return io.ReadFull(r, buffer)
 	}else{
