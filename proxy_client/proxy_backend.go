@@ -15,15 +15,15 @@ import (
 )
 
 type proxyBackend struct {
-	cipher_            core.Cipher
-	tcpAddr            net.TCPAddr
-	udpAddr            *net.UDPAddr
-	remoteServerConfig config.RemoteServerConfig
+	cipher_            	core.Cipher
+	tcpAddr            	net.TCPAddr
+	udpAddr            	*net.UDPAddr
+	remoteServerConfig 	config.RemoteServerConfig
 
-	networkType_ string
-	tcpTimeout_  time.Duration
-	udpTimeout_  time.Duration
-	kcpBackend   *KCPBackend
+	networkType_ 		string
+	tcpTimeout_  		time.Duration
+	udpTimeout_  		time.Duration
+	kcpBackend   		*KCPBackend
 
 	//dnsResolver *dnsProxyResolver
 }
@@ -212,20 +212,48 @@ func (c *proxyBackend) RelayTCPData(src net.Conn) (inboundSize int64, outboundSi
 }
 
 func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEntry, err error) {
-	var conn net.PacketConn
-	conn, err = net.ListenPacket("udp", "")
-	if err != nil {
-		err = errors.Wrap(err, "UDP proxy listen local failed")
-		return
-	}
-	conn = c.cipher_.PacketConn(conn)
 
-	if entry, err = createUDPProxyEntry(conn, dstAddr, c.udpAddr, c.udpTimeout_); err != nil {
-		conn.Close()
-		err = errors.Wrap(err, "Create udp proxy entry failed")
+	if c.remoteServerConfig.UdpOverTcp{
+		if c.kcpBackend != nil {
+			// try to get an KCP steam connection, if not fall back to default proxy mode
+			var kcpConn *smux.Stream
+			if kcpConn, err = c.kcpBackend.GetKcpConn(); err == nil {
+				if entry, err = createUDPOverKCPProxyEntry(kcpConn, dstAddr, c.udpAddr, c.udpTimeout_); err != nil {
+					kcpConn.Close()
+					err = errors.Wrap(err, "Create udp over tcp proxy entry failed")
+					return
+				}
+			}
+		}
+		var dst net.Conn
+		if dst, err = c.createTCPConn(); err != nil {
+			err = errors.Wrap(err, "Create remote conn failed")
+			return
+		}
+
+		if entry, err = createUDPOverTCPProxyEntry(dst, dstAddr, c.udpAddr, c.udpTimeout_); err != nil {
+			dst.Close()
+			err = errors.Wrap(err, "Create udp over tcp proxy entry failed")
+		}
+
+	}else{
+		var conn net.PacketConn
+		conn, err = net.ListenPacket("udp", "")
+		if err != nil {
+			err = errors.Wrap(err, "UDP proxy listen local failed")
+			return
+		}
+		conn = c.cipher_.PacketConn(conn)
+
+		if entry, err = createUDPProxyEntry(conn, dstAddr, c.udpAddr, c.udpTimeout_); err != nil {
+			conn.Close()
+			err = errors.Wrap(err, "Create udp proxy entry failed")
+		}
 	}
+
 	return
 }
+
 
 //func (c *proxyBackend) ResolveDNS(headerLen int, payload []byte, timeout time.Duration) (*dns.Msg, error) {
 //	// we use half of udp timeout for dns timeout
