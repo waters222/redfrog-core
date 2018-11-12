@@ -1,6 +1,7 @@
 package common
 
 import (
+	"encoding/binary"
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/shadowsocks/go-shadowsocks2/socks"
@@ -105,4 +106,23 @@ func ReadShadowsocksHeader(r io.Reader) ( bool, socks.Addr, error){
 	}
 
 	return false, nil, socks.ErrAddressNotSupported
+}
+
+func ReadUdpOverTcp(r io.Reader, buffer []byte) (int, error){
+	// read udp packet size info
+	_, err := io.ReadFull(r, buffer[:2])
+	if err != nil{
+		return 0, err
+	}
+	packetSize := binary.BigEndian.Uint16(buffer[:2])
+	return io.ReadFull(r, buffer[:packetSize])
+}
+
+func WriteUdpOverTcp(w io.Writer, buffer []byte) (int, error){
+	packetSize := uint16(len(buffer))
+	b := make([]byte, 2)
+	binary.BigEndian.PutUint16(b, packetSize)
+
+	w.Write(b)
+	return w.Write(buffer)
 }

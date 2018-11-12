@@ -1,22 +1,16 @@
 package proxy_client
 
 import (
-	"encoding/binary"
 	"fmt"
-	"github.com/miekg/dns"
 	"github.com/pkg/errors"
 	"github.com/shadowsocks/go-shadowsocks2/core"
-	"github.com/shadowsocks/go-shadowsocks2/socks"
-	"github.com/weishi258/redfrog-core/common"
 	"github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/log"
 	"github.com/weishi258/redfrog-core/network"
 	"github.com/xtaci/smux"
 	"go.uber.org/zap"
 	"io"
-	"math"
 	"net"
-	"sync"
 	"time"
 )
 
@@ -31,7 +25,7 @@ type proxyBackend struct {
 	udpTimeout_  time.Duration
 	kcpBackend   *KCPBackend
 
-	dnsResolver *dnsProxyResolver
+	//dnsResolver *dnsProxyResolver
 }
 
 const (
@@ -40,6 +34,9 @@ const (
 
 func computeUDPKey(src *net.UDPAddr, dst *net.UDPAddr) string {
 	return fmt.Sprintf("%s->%s", src.String(), dst.String())
+}
+func computeDnsKey(dst string) string{
+	return fmt.Sprintf("DNS->%s", dst)
 }
 
 func CreateProxyBackend(remoteServerConfig config.RemoteServerConfig) (ret *proxyBackend, err error) {
@@ -70,11 +67,11 @@ func CreateProxyBackend(remoteServerConfig config.RemoteServerConfig) (ret *prox
 		err = errors.Wrap(err, "Generate cipher failed")
 		return
 	}
-
-	if ret.dnsResolver, err = StartDnsResolver(ret.cipher_); err != nil {
-		err = errors.Wrap(err, "Dns conn listening failed")
-		return
-	}
+	//
+	//if ret.dnsResolver, err = StartDnsResolver(ret.cipher_); err != nil {
+	//	err = errors.Wrap(err, "Dns conn listening failed")
+	//	return
+	//}
 	if remoteServerConfig.Kcptun.Enable {
 		if ret.kcpBackend, err = StartKCPBackend(remoteServerConfig.Kcptun, remoteServerConfig.Crypt, remoteServerConfig.Password); err != nil {
 			err = errors.Wrap(err, "Create KCP backend failed")
@@ -91,9 +88,9 @@ func (c *proxyBackend) GetUDPTimeout() time.Duration {
 func (c *proxyBackend) Stop() {
 	logger := log.GetLogger()
 
-	if err := c.dnsResolver.Stop(); err != nil {
-		logger.Error("Proxy close dns resolver failed", zap.String("error", err.Error()))
-	}
+	//if err := c.dnsResolver.Stop(); err != nil {
+	//	logger.Error("Proxy close dns resolver failed", zap.String("error", err.Error()))
+	//}
 
 	if c.kcpBackend != nil {
 		c.kcpBackend.Stop()
@@ -230,132 +227,138 @@ func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEn
 	return
 }
 
-func (c *proxyBackend) ResolveDNS(headerLen int, payload []byte, timeout time.Duration) (*dns.Msg, error) {
-	// we use half of udp timeout for dns timeout
-	return c.dnsResolver.resolveDNS(headerLen, payload, timeout, c.udpAddr)
-}
-
-type dnsProxyResolver struct {
-	dnsConn    net.PacketConn
-	dnsIdQueue chan uint16
-
-	dnsQueryMap    map[uint16]chan<- *dns.Msg
-	dnsQueryMapMux sync.RWMutex
-	buffer         *common.LeakyBuffer
-}
-
-func StartDnsResolver(cipher core.Cipher) (ret *dnsProxyResolver, err error) {
-	ret = &dnsProxyResolver{}
-	if ret.dnsConn, err = net.ListenPacket("udp4", ""); err != nil {
-		err = errors.Wrap(err, "Dns conn listening failed")
-		return
-	}
-	ret.dnsConn = cipher.PacketConn(ret.dnsConn)
-
-	ret.dnsIdQueue = make(chan uint16, math.MaxUint16)
-	for i := 1; i < math.MaxUint16; i++ {
-		ret.dnsIdQueue <- uint16(i)
-	}
-
-	ret.dnsQueryMap = make(map[uint16]chan<- *dns.Msg)
-	ret.buffer = common.NewLeakyBuffer(common.DNS_BUFFER_POOL_SIZE, common.DNS_BUFFER_SIZE)
-	go ret.processResponse()
-	return
-}
-
-func (c *dnsProxyResolver) Stop() error {
-	return c.dnsConn.Close()
-}
-
-func (c *dnsProxyResolver) processResponse() {
-	logger := log.GetLogger()
-	// set read timeout to forever
-	//c.dnsConn.SetReadDeadline(time.Time{})
-	for {
-		buffer := c.buffer.Get()
-		if dataLen, _, err := c.dnsConn.ReadFrom(buffer); err != nil {
-			c.buffer.Put(buffer)
-			// check if its an timeout error so ignore and continue
-			if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
-				// something is wrong with this connection
-				logger.Panic("Dns resolver read failed", zap.String("error", err.Error()))
-				return
-			}
-		} else {
-			go c.processDns(buffer, dataLen)
-		}
-	}
-}
-
-func (c *dnsProxyResolver) processDns(buffer []byte, dataLen int) {
-	logger := log.GetLogger()
-	defer c.buffer.Put(buffer)
-	// lets process response
-	// get header length
-	data := buffer[:dataLen]
-	//logger.Debug("read dns response", zap.Int("length", dataLen))
-
-	dstAddrBytes := socks.SplitAddr(data)
-	if dstAddrBytes == nil {
-		logger.Error("extract shadowsocks proxy header failed")
-		return
-	}
-	headerLen := len(dstAddrBytes)
-	//logger.Debug("extract dns response", zap.Int("header length", headerLen))
-	// extract raw response
-	data = data[headerLen:]
-	// extract dnsId
-	dnsId := binary.BigEndian.Uint16(data)
-
-	// now we unpack
-	resDns := new(dns.Msg)
-	if err := resDns.Unpack(data); err != nil {
-		logger.Info("DNS unpack for proxy resolver failed", zap.String("error", err.Error()))
-		return
-	}
-
-	c.dnsQueryMapMux.Lock()
-	// if id is exists then send signal for notification and delete this entry
-	if sig, ok := c.dnsQueryMap[dnsId]; ok {
-		delete(c.dnsQueryMap, dnsId)
-		c.dnsQueryMapMux.Unlock()
-		// put id back for re-use
-		c.dnsIdQueue <- dnsId
-		sig <- resDns
-	} else {
-		c.dnsQueryMapMux.Unlock()
-	}
-
-}
-
-func (c *dnsProxyResolver) resolveDNS(headerLen int, payload []byte, timeout time.Duration, addr *net.UDPAddr) (*dns.Msg, error) {
-
-	// get un-used id from queue
-	dnsId := <-c.dnsIdQueue
-	// replace original id with new id
-	binary.BigEndian.PutUint16(payload[headerLen:], dnsId)
-	if _, err := c.dnsConn.WriteTo(payload, addr); err != nil {
-		c.dnsIdQueue <- dnsId
-		return nil, errors.Wrap(err, "Write to remote dns proxy failed")
-	} else {
-		// successful write so map it for later resolve response
-		sig := make(chan *dns.Msg)
-		c.dnsQueryMapMux.Lock()
-		c.dnsQueryMap[dnsId] = sig
-		c.dnsQueryMapMux.Unlock()
-
-		// set timeout for dns query
-		timeoutTimer := time.NewTimer(timeout)
-		select {
-		case dnsResponse := <-sig:
-			return dnsResponse, nil
-		case <-timeoutTimer.C:
-			// remove from map and recycle id after timeout triggered
-			c.dnsQueryMapMux.Lock()
-			defer c.dnsQueryMapMux.Unlock()
-			delete(c.dnsQueryMap, dnsId)
-			c.dnsIdQueue <- dnsId
-			return nil, errors.New(fmt.Sprintf("read dns from remote proxy timeout: %s, dnsID: %d", timeout.String(), dnsId))
-		}
-	}
-}
+//func (c *proxyBackend) ResolveDNS(headerLen int, payload []byte, timeout time.Duration) (*dns.Msg, error) {
+//	// we use half of udp timeout for dns timeout
+//	return c.dnsResolver.resolveDNS(headerLen, payload, timeout, c.udpAddr)
+//}
+//
+//type dnsProxyResolver struct {
+//	//dnsConn    net.PacketConn
+//	dnsIdQueue chan uint16
+//
+//	dnsQueryMap    map[uint16]chan<- *dns.Msg
+//	dnsQueryMapMux sync.RWMutex
+//	buffer         *common.LeakyBuffer
+//}
+//
+//func StartDnsResolver(cipher core.Cipher) (ret *dnsProxyResolver, err error) {
+//	ret = &dnsProxyResolver{}
+//	//if ret.dnsConn, err = net.ListenPacket("udp4", ""); err != nil {
+//	//	err = errors.Wrap(err, "Dns conn listening failed")
+//	//	return
+//	//}
+//	//ret.dnsConn = cipher.PacketConn(ret.dnsConn)
+//	ret.dnsIdQueue = make(chan uint16, math.MaxUint16)
+//	for i := 1; i < math.MaxUint16; i++ {
+//		ret.dnsIdQueue <- uint16(i)
+//	}
+//
+//	ret.dnsQueryMap = make(map[uint16]chan<- *dns.Msg)
+//	ret.buffer = common.NewLeakyBuffer(common.DNS_BUFFER_POOL_SIZE, common.DNS_BUFFER_SIZE)
+//	//go ret.processResponse()
+//	return
+//}
+//
+//func (c *dnsProxyResolver) Stop() error {
+//	//return c.dnsConn.Close()
+//}
+//
+//func (c *dnsProxyResolver) processResponse() {
+//	logger := log.GetLogger()
+//
+//	udpKey := computeUDPKey(srcAddr, dstAddr)
+//
+//	//// set read timeout to forever
+//	////c.dnsConn.SetReadDeadline(time.Time{})
+//	//for {
+//	//	buffer := c.buffer.Get()
+//	//	if dataLen, _, err := c.dnsConn.ReadFrom(buffer); err != nil {
+//	//		c.buffer.Put(buffer)
+//	//		// check if its an timeout error so ignore and continue
+//	//		if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
+//	//			// something is wrong with this connection
+//	//			logger.Panic("Dns resolver read failed", zap.String("error", err.Error()))
+//	//			return
+//	//		}
+//	//	} else {
+//	//		go c.processDns(buffer, dataLen)
+//	//	}
+//	//}
+//}
+//
+//func (c *dnsProxyResolver) processDns(buffer []byte, dataLen int) {
+//	logger := log.GetLogger()
+//	defer c.buffer.Put(buffer)
+//	// lets process response
+//	// get header length
+//	data := buffer[:dataLen]
+//	//logger.Debug("read dns response", zap.Int("length", dataLen))
+//
+//	dstAddrBytes := socks.SplitAddr(data)
+//	if dstAddrBytes == nil {
+//		logger.Error("extract shadowsocks proxy header failed")
+//		return
+//	}
+//	headerLen := len(dstAddrBytes)
+//	//logger.Debug("extract dns response", zap.Int("header length", headerLen))
+//	// extract raw response
+//	data = data[headerLen:]
+//	// extract dnsId
+//	dnsId := binary.BigEndian.Uint16(data)
+//
+//	// now we unpack
+//	resDns := new(dns.Msg)
+//	if err := resDns.Unpack(data); err != nil {
+//		logger.Info("DNS unpack for proxy resolver failed", zap.String("error", err.Error()))
+//		return
+//	}
+//
+//	c.dnsQueryMapMux.Lock()
+//	// if id is exists then send signal for notification and delete this entry
+//	if sig, ok := c.dnsQueryMap[dnsId]; ok {
+//		delete(c.dnsQueryMap, dnsId)
+//		c.dnsQueryMapMux.Unlock()
+//		// put id back for re-use
+//		c.dnsIdQueue <- dnsId
+//		sig <- resDns
+//	} else {
+//		c.dnsQueryMapMux.Unlock()
+//	}
+//
+//}
+//
+//func (c *dnsProxyResolver) resolveDNS(headerLen int, payload []byte, timeout time.Duration, addr *net.UDPAddr) (*dns.Msg, error) {
+//
+//	// get un-used id from queue
+//	dnsId := <-c.dnsIdQueue
+//	// replace original id with new id
+//	binary.BigEndian.PutUint16(payload[headerLen:], dnsId)
+//
+//	// lets get udpproxy
+//	dnsProxyKey := fmt.Sprintf("dns -> %s", addr.String())
+//
+//	if _, err := c.dnsConn.WriteTo(payload, addr); err != nil {
+//		c.dnsIdQueue <- dnsId
+//		return nil, errors.Wrap(err, "Write to remote dns proxy failed")
+//	} else {
+//		// successful write so map it for later resolve response
+//		sig := make(chan *dns.Msg)
+//		c.dnsQueryMapMux.Lock()
+//		c.dnsQueryMap[dnsId] = sig
+//		c.dnsQueryMapMux.Unlock()
+//
+//		// set timeout for dns query
+//		timeoutTimer := time.NewTimer(timeout)
+//		select {
+//		case dnsResponse := <-sig:
+//			return dnsResponse, nil
+//		case <-timeoutTimer.C:
+//			// remove from map and recycle id after timeout triggered
+//			c.dnsQueryMapMux.Lock()
+//			defer c.dnsQueryMapMux.Unlock()
+//			delete(c.dnsQueryMap, dnsId)
+//			c.dnsIdQueue <- dnsId
+//			return nil, errors.New(fmt.Sprintf("read dns from remote proxy timeout: %s, dnsID: %d", timeout.String(), dnsId))
+//		}
+//	}
+//}

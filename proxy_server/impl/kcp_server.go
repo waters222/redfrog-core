@@ -9,19 +9,22 @@ import (
 	"github.com/weishi258/redfrog-core/log"
 	"github.com/xtaci/smux"
 	"go.uber.org/zap"
+	"github.com/shadowsocks/go-shadowsocks2/socks"
 	"io"
 	"net"
 	"time"
 )
 
 type KCPServer struct {
-	config   config.KcptunConfig
-	cipher   kcp.AheadCipher
-	listener *kcp.Listener
-	timeout  time.Duration
+	config     config.KcptunConfig
+	cipher     kcp.AheadCipher
+	listener   *kcp.Listener
+	tcpTimeout time.Duration
+	udpTimeout time.Duration
+	udpLeakyBuffer *common.LeakyBuffer
 }
 
-func StartKCPServer(config config.KcptunConfig, crypt string, password string, timeoutValue int) (ret *KCPServer, err error) {
+func StartKCPServer(config config.KcptunConfig, crypt string, password string, udpLeakyBuffer *common.LeakyBuffer, tcpTimeoutValue int, udpTimeoutValue int) (ret *KCPServer, err error) {
 	logger := log.GetLogger()
 	ret = &KCPServer{}
 	ret.config = config
@@ -30,7 +33,9 @@ func StartKCPServer(config config.KcptunConfig, crypt string, password string, t
 		ret.config.Interval,
 		ret.config.Resend,
 		ret.config.NoCongestion)
-	ret.timeout = time.Second * time.Duration(timeoutValue)
+	ret.tcpTimeout = time.Second * time.Duration(tcpTimeoutValue)
+	ret.udpTimeout = time.Second * time.Duration(udpTimeoutValue)
+	ret.udpLeakyBuffer = udpLeakyBuffer
 
 	if ret.cipher, err = kcp_helper.GetCipher(crypt, password); err != nil {
 		err = errors.Wrap(err, "Create Kcp cipher failed")
@@ -114,6 +119,59 @@ func (c *KCPServer) handleConnection(conn io.ReadWriteCloser) {
 		}
 	}
 }
+
+func (c *KCPServer) handleUDPOverTCP(conn *smux.Stream, dstAddrBytes socks.Addr){
+	logger := log.GetLogger()
+	dstAddr, err := net.ResolveUDPAddr("udp", dstAddrBytes.String())
+	remoteConn, err := net.DialUDP("udp", dstAddr, nil)
+	defer remoteConn.Close()
+	if err != nil{
+		logger.Error("UDP dial remote address failed", zap.String("addr", dstAddrBytes.String()), zap.String("error", err.Error()))
+		return
+	}
+	buffer := c.udpLeakyBuffer.Get()
+	defer c.udpLeakyBuffer.Put(buffer)
+
+	go func(){
+		copyBuffer := c.udpLeakyBuffer.Get()
+		defer c.udpLeakyBuffer.Put(copyBuffer)
+		defer conn.SetReadDeadline(time.Now())
+		for{
+			dataLen, _, err := remoteConn.ReadFrom(copyBuffer)
+			if err != nil{
+				if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
+					logger.Error("UDP read from remote failed", zap.String("error", err.Error()))
+				}
+				return
+			}
+			if _, err = common.WriteUdpOverTcp(conn, copyBuffer[:dataLen]); err != nil{
+				logger.Error("UDP write back failed", zap.String("error", err.Error()))
+				return
+			}
+			remoteConn.SetReadDeadline(time.Now().Add(c.udpTimeout))
+		}
+
+	}()
+	var packetSize int
+	defer remoteConn.SetReadDeadline(time.Now())
+	for err == nil{
+		if packetSize, err = common.ReadUdpOverTcp(conn, buffer); err != nil{
+			if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
+				logger.Error("Read UDP over TCP failed", zap.String("addr", dstAddrBytes.String()), zap.Int("packetSize", packetSize), zap.String("error", err.Error()))
+			}
+			return
+		}
+		if _, err = remoteConn.Write(buffer[:packetSize]); err != nil{
+			logger.Error("write udp to remote failed", zap.String("addr", dstAddrBytes.String()), zap.String("error", err.Error()))
+			return
+		}
+		remoteConn.SetReadDeadline(time.Now().Add(c.udpTimeout))
+	}
+
+
+}
+
+
 func (c *KCPServer) handleRelay(kcpConn *smux.Stream) {
 	logger := log.GetLogger()
 
@@ -125,7 +183,7 @@ func (c *KCPServer) handleRelay(kcpConn *smux.Stream) {
 		return
 	}
 	if isUDP{
-
+		c.handleUDPOverTCP(kcpConn, dstAddr)
 	}else{
 
 		remoteConn, err := net.Dial("tcp", dstAddr.String())
@@ -135,7 +193,7 @@ func (c *KCPServer) handleRelay(kcpConn *smux.Stream) {
 		}
 		//logger.Debug("tcp dial remote", zap.String("addr", dstAddr.String()))
 		defer remoteConn.Close()
-		remoteConn.SetWriteDeadline(time.Now().Add(c.timeout))
+		remoteConn.SetWriteDeadline(time.Now().Add(c.tcpTimeout))
 		remoteConn.(*net.TCPConn).SetKeepAlive(true)
 
 		// starting relay data
@@ -144,7 +202,7 @@ func (c *KCPServer) handleRelay(kcpConn *smux.Stream) {
 		go func() {
 			outboundSize, err := io.Copy(remoteConn, kcpConn)
 			remoteConn.SetDeadline(time.Now())
-			kcpConn.Close()
+			kcpConn.SetDeadline(time.Now())
 
 			//remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 			//kcpConn.SetDeadline(time.Now())  // wake up the other goroutine blocking on left
@@ -153,7 +211,7 @@ func (c *KCPServer) handleRelay(kcpConn *smux.Stream) {
 
 		inboundSize, err := io.Copy(kcpConn, remoteConn)
 		remoteConn.SetDeadline(time.Now())
-		kcpConn.Close()
+		kcpConn.SetDeadline(time.Now())
 
 		//remoteConn.SetDeadline(time.Now()) // wake up the other goroutine blocking on right
 		//kcpConn.SetDeadline(time.Now())  // wake up the other goroutine blocking on left
