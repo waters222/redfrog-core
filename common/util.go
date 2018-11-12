@@ -115,8 +115,13 @@ func ReadUdpOverTcp(r io.Reader, buffer []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	packetSize := binary.BigEndian.Uint16(buffer[:2])
-	return io.ReadFull(r, buffer[:packetSize])
+	packetSize := int(binary.BigEndian.Uint16(buffer[:2]))
+	if packetSize <= len(buffer){
+		return io.ReadFull(r, buffer)
+	}else{
+		return 0, errors.New("udp packet too big")
+	}
+
 }
 
 func WriteUdpOverTcp(w io.Writer, buffer []byte) (int, error) {
