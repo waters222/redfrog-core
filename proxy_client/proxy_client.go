@@ -22,29 +22,29 @@ import (
 //)
 
 type dnsProxyResolver struct {
-	dnsIdQueue 			chan uint16
-	dnsQueryMap    		map[uint16]chan<- *dns.Msg
-	dnsQueryMapMux 		sync.RWMutex
+	dnsIdQueue     chan uint16
+	dnsQueryMap    map[uint16]chan<- *dns.Msg
+	dnsQueryMapMux sync.RWMutex
 }
 
 type ProxyClient struct {
-	backends_  			[]*proxyBackend
-	backendMux 			sync.RWMutex
+	backends_  []*proxyBackend
+	backendMux sync.RWMutex
 
-	tcpListener 		net.Listener
-	udpListener 		*net.UDPConn
+	tcpListener net.Listener
+	udpListener *net.UDPConn
 
-	udpBuffer_    		*common.LeakyBuffer
-	udpOOBBuffer_ 		*common.LeakyBuffer
-	addr          		string
+	udpBuffer_    *common.LeakyBuffer
+	udpOOBBuffer_ *common.LeakyBuffer
+	addr          string
 
-	udpBackend_ 		*udpBackend
-	udpNatMap_  		*udpNatMap
+	udpBackend_ *udpBackend
+	udpNatMap_  *udpNatMap
 
-	dnsServer      		common.DNSServerInterface
-	dnsMockTimeout 		int
+	dnsServer      common.DNSServerInterface
+	dnsMockTimeout int
 
-	dnsProxy 			dnsProxyResolver
+	dnsProxy dnsProxyResolver
 }
 
 // udp relay
@@ -319,13 +319,13 @@ func (c *ProxyClient) HandleUDP(buffer []byte, srcAddr *net.UDPAddr, dstAddr *ne
 	if dstAddr.Port == 53 {
 		msg := new(dns.Msg)
 		if err := msg.Unpack(buffer[:dataLen]); err != nil {
-			if len(msg.Question) > 0{
+			if len(msg.Question) > 0 {
 				logger.Info("unpack DNS packet failed",
 					zap.String("src", srcAddr.String()),
 					zap.String("DNS server", dstAddr.String()),
 					zap.String("domain", msg.Question[0].Name),
 					zap.Int("udp size", dataLen), zap.String("error", err.Error()))
-			}else{
+			} else {
 				logger.Info("unpack DNS packet failed",
 					zap.String("src", srcAddr.String()),
 					zap.String("DNS server", dstAddr.String()),
@@ -333,7 +333,7 @@ func (c *ProxyClient) HandleUDP(buffer []byte, srcAddr *net.UDPAddr, dstAddr *ne
 			}
 			x := new(dns.Msg)
 			x.SetRcodeFormatError(msg)
-			if responseByte, _ := x.Pack(); len(responseByte) > 0{
+			if responseByte, _ := x.Pack(); len(responseByte) > 0 {
 				c.udpBackend_.WriteBackUDPPayload(c, srcAddr, dstAddr, responseByte, time.Duration(c.dnsMockTimeout)*time.Second)
 			}
 			return
@@ -395,10 +395,8 @@ func (c *ProxyClient) Stop() {
 
 }
 
-func (c *ProxyClient) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, data []byte, dataLen int) error {
+func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, data []byte, dataLen int) error {
 	logger := log.GetLogger()
-
-	udpKey := computeUDPKey(srcAddr, dstAddr)
 
 	c.udpNatMap_.Lock()
 	defer c.udpNatMap_.Unlock()
@@ -445,7 +443,13 @@ func (c *ProxyClient) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, d
 					// now lets write back
 					headerLen := len(udpProxy.header_)
 					if n > headerLen {
-						c.udpBackend_.WriteBackUDPPayload(c, srcAddr, dstAddr, buffer[headerLen:n], udpProxy.timeout)
+						if srcAddr == nil {
+							// its dns so deal accordingly
+							c.processDNSResponse(buffer[headerLen:n])
+						} else {
+							// regular udp proxy
+							c.udpBackend_.WriteBackUDPPayload(c, srcAddr, dstAddr, buffer[headerLen:n], udpProxy.timeout)
+						}
 					} else {
 						logger.Info("UDP read from remote too small, so not write back", zap.Int("n", n), zap.Int("headerLen", headerLen))
 					}
@@ -486,6 +490,9 @@ func (c *ProxyClient) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, d
 	udpProxy.dst_.SetReadDeadline(time.Now().Add(udpProxy.timeout))
 	return nil
 }
+func (c *ProxyClient) RelayUDPData(srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, data []byte, dataLen int) error {
+	return c.relayUDPData(computeUDPKey(srcAddr, dstAddr), srcAddr, dstAddr, data, dataLen)
+}
 
 // using relay udp data to exchange dns
 
@@ -493,8 +500,7 @@ func (c *ProxyClient) SetDNSProcessor(server common.DNSServerInterface) {
 	c.dnsServer = server
 }
 
-
-func (c *ProxyClient) processDNSResponse(data []byte){
+func (c *ProxyClient) processDNSResponse(data []byte) {
 	logger := log.GetLogger()
 	dnsId := binary.BigEndian.Uint16(data)
 	// now we unpack
@@ -518,94 +524,17 @@ func (c *ProxyClient) processDNSResponse(data []byte){
 }
 
 func (c *ProxyClient) ExchangeDNS(dnsAddr string, data []byte, timeout time.Duration) (response *dns.Msg, err error) {
-	logger := log.GetLogger()
-	udpKey := computeDnsKey(dnsAddr)
-
-	c.udpNatMap_.Lock()
-	defer c.udpNatMap_.Unlock()
-
-	udpProxy := c.udpNatMap_.Get(udpKey)
-
-	if udpProxy == nil {
-
-		backendProxy := c.getBackendProxy()
-		if backendProxy == nil {
-			return nil, errors.New("Can not get backend proxy")
-		}
-		var err error
-		dstAddr, err := net.ResolveUDPAddr("udp", dnsAddr)
-		if udpProxy, err = backendProxy.GetUDPRelayEntry(dstAddr); err != nil {
-			return nil, errors.Wrap(err, "UDP proxy listen local failed ")
-		}
-		c.udpNatMap_.Add(udpKey, udpProxy)
-
-		// now lets run copy from dst
-		go func() {
-			// copy udp from remote
-			defer func() {
-				c.udpNatMap_.Lock()
-				defer c.udpNatMap_.Unlock()
-				udpProxy.dst_.Close()
-				c.udpNatMap_.Del(udpKey)
-			}()
-
-			buffer := c.udpBuffer_.Get()
-			defer c.udpBuffer_.Put(buffer)
-			for {
-				udpProxy.dst_.SetReadDeadline(time.Now().Add(udpProxy.timeout))
-				if n, _, err := udpProxy.dst_.ReadFrom(buffer); err != nil {
-					// do not print timeout
-					if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
-						logger.Error("Read udp from remote dst failed", zap.String("error", err.Error()))
-					}
-					return
-				} else {
-					headerLen := len(udpProxy.header_)
-					if n > headerLen {
-						go c.processDNSResponse(buffer[headerLen:n])
-					} else {
-						logger.Info("UDP read from remote too small, so not write back", zap.Int("n", n), zap.Int("headerLen", headerLen))
-					}
-
-				}
-			}
-
-		}()
+	dstAddr, err := net.ResolveUDPAddr("udp", dnsAddr)
+	if err != nil {
+		return nil, errors.New(fmt.Sprintf("resolve dns server addr failed: %s", dnsAddr))
 	}
 
+	//logger := log.GetLogger()
 	dnsId := <-c.dnsProxy.dnsIdQueue
 	// replace original id with new id
 	binary.BigEndian.PutUint16(data, dnsId)
 
-	dataLen := len(data)
-	headerLen := len(udpProxy.header_)
-	totalLen := headerLen + dataLen
-
-	if totalLen > c.udpBuffer_.GetBufferSize() {
-		// too big for our leakybuffer
-		writeData := make([]byte, totalLen)
-		copy(writeData[:headerLen], udpProxy.header_)
-		copy(writeData[headerLen:totalLen], data[:dataLen])
-		// set timeout for each send
-		// write to remote shadowsocks server
-		if _, err := udpProxy.dst_.WriteTo(writeData, udpProxy.proxyAddr); err != nil {
-			return nil, err
-		}
-
-	} else {
-		// get leaky buffer
-		newBuffer := c.udpBuffer_.Get()
-		defer c.udpBuffer_.Put(newBuffer)
-		copy(newBuffer, udpProxy.header_)
-		copy(newBuffer[headerLen:], data[:dataLen])
-		// set timeout for each send
-		// write to remote shadowsocks server
-		if _, err := udpProxy.dst_.WriteTo(newBuffer[:totalLen], udpProxy.proxyAddr); err != nil {
-			return nil, err
-		}
-	}
-	udpProxy.dst_.SetReadDeadline(time.Now().Add(udpProxy.timeout))
-
+	err = c.relayUDPData(computeDnsKey(dnsAddr), nil, dstAddr, data, len(data))
 
 	sig := make(chan *dns.Msg)
 	c.dnsProxy.dnsQueryMapMux.Lock()

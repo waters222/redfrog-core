@@ -100,14 +100,14 @@ func (c *KcptunConfig) Equal(other *KcptunConfig) bool {
 }
 
 type RemoteServerConfig struct {
-	Enable       bool        	`yaml:"enable"`
-	UdpTimeout   int         	`yaml:"udp-timeout"`
-	TcpTimeout   int         	`yaml:"tcp-timeout"`
-	RemoteServer string     	`yaml:"remote-server"`
-	Crypt        string       	`yaml:"crypt"`
-	Password     string       	`yaml:"password"`
-	UdpOverTcp   bool			`yaml:"udp-over-tcp"`
-	Kcptun       KcptunConfig 	`yaml:"kcptun"`
+	Enable       bool         `yaml:"enable"`
+	UdpTimeout   int          `yaml:"udp-timeout"`
+	TcpTimeout   int          `yaml:"tcp-timeout"`
+	RemoteServer string       `yaml:"remote-server"`
+	Crypt        string       `yaml:"crypt"`
+	Password     string       `yaml:"password"`
+	UdpOverTcp   bool         `yaml:"udp-over-tcp"`
+	Kcptun       KcptunConfig `yaml:"kcptun"`
 }
 
 func (c *RemoteServerConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
@@ -141,20 +141,20 @@ type ShadowsocksConfig struct {
 }
 
 type DnsFilterConfig struct {
-	Enable     		bool     		`yaml:"enable"`
-	WhiteLists 		[]string 		`yaml:"white-list"`
-	BlackLists 		[]string 		`yaml:"black-list"`
+	Enable     bool     `yaml:"enable"`
+	WhiteLists []string `yaml:"white-list"`
+	BlackLists []string `yaml:"black-list"`
 }
 
 type DnsConfig struct {
-	ListenAddr    	string          `yaml:"listen-addr"`
-	LocalResolver 	[]string        `yaml:"local-resolver"`
-	ProxyResolver 	[]string        `yaml:"proxy-resolver"`
-	SendNum       	int             `yaml:"send-num"`
-	Timeout       	int             `yaml:"timeout"`
-	Cache         	bool            `yaml:"cache"`
-	FilterConfig  	DnsFilterConfig `yaml:"filter"`
-	UseTCP			bool			`yaml:"use_tcp"`
+	ListenAddr    string          `yaml:"listen-addr"`
+	LocalResolver []string        `yaml:"local-resolver"`
+	ProxyResolver []string        `yaml:"proxy-resolver"`
+	SendNum       int             `yaml:"send-num"`
+	Timeout       int             `yaml:"timeout"`
+	Cache         bool            `yaml:"cache"`
+	FilterConfig  DnsFilterConfig `yaml:"filter"`
+	UseTCP        bool            `yaml:"use_tcp"`
 }
 
 func (c *DnsConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {

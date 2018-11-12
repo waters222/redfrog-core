@@ -35,7 +35,7 @@ const (
 func computeUDPKey(src *net.UDPAddr, dst *net.UDPAddr) string {
 	return fmt.Sprintf("%s->%s", src.String(), dst.String())
 }
-func computeDnsKey(dst string) string{
+func computeDnsKey(dst string) string {
 	return fmt.Sprintf("DNS->%s", dst)
 }
 

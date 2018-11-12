@@ -11,7 +11,8 @@ import (
 	"os/exec"
 	"strings"
 )
-const(
+
+const (
 	AtTypeUdpIpv4 = 51
 	AtTypeUdpIpv6 = 52
 )
@@ -76,7 +77,7 @@ func PipeCommand(cmds ...*exec.Cmd) (output []byte, err error) {
 	return
 }
 
-func ReadShadowsocksHeader(r io.Reader) ( bool, socks.Addr, error){
+func ReadShadowsocksHeader(r io.Reader) (bool, socks.Addr, error) {
 	b := make([]byte, socks.MaxAddrLen)
 	_, err := io.ReadFull(r, b[:1]) // read 1st byte for address type
 	if err != nil {
@@ -108,17 +109,17 @@ func ReadShadowsocksHeader(r io.Reader) ( bool, socks.Addr, error){
 	return false, nil, socks.ErrAddressNotSupported
 }
 
-func ReadUdpOverTcp(r io.Reader, buffer []byte) (int, error){
+func ReadUdpOverTcp(r io.Reader, buffer []byte) (int, error) {
 	// read udp packet size info
 	_, err := io.ReadFull(r, buffer[:2])
-	if err != nil{
+	if err != nil {
 		return 0, err
 	}
 	packetSize := binary.BigEndian.Uint16(buffer[:2])
 	return io.ReadFull(r, buffer[:packetSize])
 }
 
-func WriteUdpOverTcp(w io.Writer, buffer []byte) (int, error){
+func WriteUdpOverTcp(w io.Writer, buffer []byte) (int, error) {
 	packetSize := uint16(len(buffer))
 	b := make([]byte, 2)
 	binary.BigEndian.PutUint16(b, packetSize)

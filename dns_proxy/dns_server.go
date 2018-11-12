@@ -361,10 +361,10 @@ func (c *DnsServer) resolveProxyDNS(r *dns.Msg, domainName string, isBlock bool)
 						// ipv6 is not fully support yet, so ignore now
 					} else if a.Header().Rrtype == dns.TypeAAAA {
 
-							//shouldAddCache = true
-							name := strings.TrimSuffix(a.Header().Name, ".")
-							c.routingMgr.AddIp(name, a.(*dns.AAAA).AAAA)
-							logger.Debug("ipv6 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.AAAA).AAAA.String()), zap.Uint32("ttl", ttl))
+						//shouldAddCache = true
+						name := strings.TrimSuffix(a.Header().Name, ".")
+						c.routingMgr.AddIp(name, a.(*dns.AAAA).AAAA)
+						logger.Debug("ipv6 ip query", zap.String("domain", name), zap.String("ip", a.(*dns.AAAA).AAAA.String()), zap.Uint32("ttl", ttl))
 					} else if a.Header().Rrtype == dns.TypeCNAME {
 						cname := strings.TrimSuffix(a.(*dns.CNAME).Target, ".")
 						c.pacMgr.AddDomain(cname, common.DOMAIN_BLACK_LIST)
@@ -387,13 +387,13 @@ func (c *DnsServer) resolveLocalDNS(r *dns.Msg) (*dns.Msg, error) {
 	if resolver := c.getResolver(false); resolver != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 		defer cancel()
-		if response, _, err := resolver.client.ExchangeContext(ctx, r, resolver.addr); err != nil{
+		if response, _, err := resolver.client.ExchangeContext(ctx, r, resolver.addr); err != nil {
 			if len(r.Question) > 0 {
 				return nil, errors.Wrapf(err, "Dns query for local resolver failed, domain: %s", r.Question[0].String())
 			} else {
 				return nil, errors.Wrap(err, "Dns query for local resolver failed")
 			}
-		}else{
+		} else {
 			return response, nil
 		}
 	} else {
@@ -472,7 +472,7 @@ func (c *DnsServer) processDNSRequest(w dns.ResponseWriter, r *dns.Msg) ([]byte,
 }
 
 func (c *DnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
-	if _, err := c.processDNSRequest(w, r); err != nil{
+	if _, err := c.processDNSRequest(w, r); err != nil {
 		log.GetLogger().Error("Server local DNS failed", zap.String("error", err.Error()))
 	}
 }

@@ -43,7 +43,7 @@ type ProxyList struct {
 type PacListMgr struct {
 	// for reading paclist and compare
 	sync.Mutex
-	pacLists map[string]*PacList
+	pacLists  map[string]*PacList
 	proxyList ProxyList
 
 	// routing table
@@ -315,9 +315,9 @@ func (c *PacList) parsePacListLine(line []byte) (err error) {
 	}
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 0 {
 		ip := string(matches[0][1][:])
-		if originDomainType, ok := c.IPs[ip]; ok{
+		if originDomainType, ok := c.IPs[ip]; ok {
 			c.IPs[ip] = bDomainType || originDomainType
-		}else{
+		} else {
 			c.IPs[ip] = bDomainType
 		}
 
@@ -331,9 +331,9 @@ func (c *PacList) parsePacListLine(line []byte) (err error) {
 	}
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 0 {
 		domain := string(matches[0][1][:])
-		if originDomainType, ok := c.Domains[domain]; ok{
+		if originDomainType, ok := c.Domains[domain]; ok {
 			c.Domains[domain] = bDomainType || originDomainType
-		}else{
+		} else {
 			c.Domains[domain] = bDomainType
 		}
 		//logger.Debug("ParsePAC find domain", zap.String("line", string(line[:])), zap.String("domain", domain), zap.Bool("black_list", bDomainType))
@@ -346,9 +346,9 @@ func (c *PacList) parsePacListLine(line []byte) (err error) {
 	}
 	if matches := re.FindAllSubmatch(matchByte, -1); len(matches) > 0 {
 		domain := string(matches[0][1][:])
-		if originDomainType, ok := c.Domains[domain]; ok{
+		if originDomainType, ok := c.Domains[domain]; ok {
 			c.Domains[domain] = bDomainType || originDomainType
-		}else{
+		} else {
 			c.Domains[domain] = bDomainType
 		}
 		//logger.Debug("ParsePAC find domain", zap.String("line", string(line[:])), zap.String("domain", domain), zap.Bool("black_list", bDomainType))

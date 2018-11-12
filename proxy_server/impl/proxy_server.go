@@ -149,31 +149,31 @@ func (c *ProxyServer) startTCPAccept() {
 	logger.Info("TCP listen stopped", zap.String("listenAddr", c.listenAddr))
 }
 
-func (c *ProxyServer) handleUDPOverTCP(conn net.Conn, dstAddrBytes socks.Addr){
+func (c *ProxyServer) handleUDPOverTCP(conn net.Conn, dstAddrBytes socks.Addr) {
 	logger := log.GetLogger()
 	dstAddr, err := net.ResolveUDPAddr("udp", dstAddrBytes.String())
 	remoteConn, err := net.DialUDP("udp", dstAddr, nil)
 	defer remoteConn.Close()
-	if err != nil{
+	if err != nil {
 		logger.Error("UDP dial remote address failed", zap.String("addr", dstAddrBytes.String()), zap.String("error", err.Error()))
 		return
 	}
 	buffer := c.udpLeakyBuffer.Get()
 	defer c.udpLeakyBuffer.Put(buffer)
 
-	go func(){
+	go func() {
 		copyBuffer := c.udpLeakyBuffer.Get()
 		defer c.udpLeakyBuffer.Put(copyBuffer)
 		defer conn.SetReadDeadline(time.Now())
-		for{
+		for {
 			dataLen, _, err := remoteConn.ReadFrom(copyBuffer)
-			if err != nil{
+			if err != nil {
 				if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
 					logger.Error("UDP read from remote failed", zap.String("error", err.Error()))
 				}
 				return
 			}
-			if _, err = common.WriteUdpOverTcp(conn, copyBuffer[:dataLen]); err != nil{
+			if _, err = common.WriteUdpOverTcp(conn, copyBuffer[:dataLen]); err != nil {
 				logger.Error("UDP write back failed", zap.String("error", err.Error()))
 				return
 			}
@@ -183,20 +183,19 @@ func (c *ProxyServer) handleUDPOverTCP(conn net.Conn, dstAddrBytes socks.Addr){
 	}()
 	var packetSize int
 	defer remoteConn.SetReadDeadline(time.Now())
-	for err == nil{
-		if packetSize, err = common.ReadUdpOverTcp(conn, buffer); err != nil{
+	for err == nil {
+		if packetSize, err = common.ReadUdpOverTcp(conn, buffer); err != nil {
 			if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
 				logger.Error("Read UDP over TCP failed", zap.String("addr", dstAddrBytes.String()), zap.Int("packetSize", packetSize), zap.String("error", err.Error()))
 			}
 			return
 		}
-		if _, err = remoteConn.Write(buffer[:packetSize]); err != nil{
+		if _, err = remoteConn.Write(buffer[:packetSize]); err != nil {
 			logger.Error("write udp to remote failed", zap.String("addr", dstAddrBytes.String()), zap.String("error", err.Error()))
 			return
 		}
 		remoteConn.SetReadDeadline(time.Now().Add(c.udpTimeout_))
 	}
-
 
 }
 
@@ -213,9 +212,9 @@ func (c *ProxyServer) handleTCP(conn net.Conn) {
 		logger.Error("TCP read dst addr failed", zap.String("error", err.Error()))
 		return
 	}
-	if isUDP{
+	if isUDP {
 		c.handleUDPOverTCP(conn, dstAddr)
-	}else{
+	} else {
 		remoteConn, err := net.Dial("tcp4", dstAddr.String())
 		if err != nil {
 			logger.Info("TCP dial dst failed", zap.String("error", err.Error()))
