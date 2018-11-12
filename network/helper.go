@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/shadowsocks/go-shadowsocks2/socks"
+	"github.com/weishi258/redfrog-core/common"
 	"net"
 	"os"
 	"regexp"
@@ -319,7 +321,7 @@ func DialTransparentUDP(addr *net.UDPAddr) (ln *net.UDPConn, err error) {
 	return
 }
 
-func ConvertShadowSocksAddr(addr string) ([]byte, error) {
+func ConvertShadowSocksAddr(addr string, isUDP bool) ([]byte, error) {
 	var ret []byte
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -331,11 +333,21 @@ func ConvertShadowSocksAddr(addr string) ([]byte, error) {
 	}
 	if ipv4 := ip.To4(); ipv4 != nil {
 		ret = make([]byte, 1+net.IPv4len+2)
-		ret[0] = ShadowSocksAtypIPv4
+		if isUDP{
+			ret[0] = common.AtTypeUdpIpv4
+		}else{
+			ret[0] = socks.AtypIPv4
+		}
+
 		copy(ret[1:], ipv4)
 	} else {
 		ret = make([]byte, 1+net.IPv6len+2)
-		ret[0] = ShadowSocksAtypIPv6
+		if isUDP{
+			ret[0] = common.AtTypeUdpIpv6
+		}else{
+			ret[0] = socks.AtypIPv6
+		}
+
 		copy(ret[1:], ip)
 	}
 	var hostPort uint64

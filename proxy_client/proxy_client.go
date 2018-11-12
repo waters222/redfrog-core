@@ -65,7 +65,7 @@ type udpProxyEntry struct {
 }
 
 func createProxyEntry(dstP net.PacketConn, dstT net.Conn, dstK *smux.Stream, dstAddr *net.UDPAddr, proxyAddr *net.UDPAddr, timeout time.Duration) (*udpProxyEntry, error) {
-	addr, err := network.ConvertShadowSocksAddr(dstAddr.String())
+	addr, err := network.ConvertShadowSocksAddr(dstAddr.String(), true)
 	if err != nil {
 		return nil, err
 	}
@@ -502,9 +502,9 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 				defer func() {
 					if srcAddr == nil {
 						if udpProxy.dstKcp_ != nil {
-							logger.Debug("dns relay entry quit", zap.String("src", udpProxy.dstKcp_.LocalAddr().String()), zap.String("dst", dstAddr.String()))
+							logger.Debug("dns relay entry quit",  zap.String("dst", dstAddr.String()))
 						} else {
-							logger.Debug("dns relay entry quit", zap.String("src", udpProxy.dstTcp_.LocalAddr().String()), zap.String("dst", dstAddr.String()))
+							logger.Debug("dns relay entry quit",  zap.String("dst", dstAddr.String()))
 						}
 
 					} else {

@@ -151,7 +151,7 @@ func (c *proxyBackend) relayKCPData(srcConn net.Conn, kcpConn *smux.Stream, head
 func (c *proxyBackend) RelayTCPData(src net.Conn) (inboundSize int64, outboundSize int64, err error) {
 
 	var originDst []byte
-	if originDst, err = network.ConvertShadowSocksAddr(src.LocalAddr().String()); err != nil {
+	if originDst, err = network.ConvertShadowSocksAddr(src.LocalAddr().String(), false); err != nil {
 		err = errors.Wrap(err, "Parse origin dst failed")
 		return
 	}
@@ -218,12 +218,13 @@ func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEn
 			// try to get an KCP steam connection, if not fall back to default proxy mode
 			var kcpConn *smux.Stream
 			if kcpConn, err = c.kcpBackend.GetKcpConn(); err == nil {
-				if entry, err = createUDPOverKCPProxyEntry(kcpConn, dstAddr, c.udpAddr, c.udpTimeout_); err != nil {
+				if entry, err = createUDPOverKCPProxyEntry(kcpConn, dstAddr, c.udpAddr, c.udpTimeout_); err == nil {
+					log.GetLogger().Debug("create udp over kcp relay entry successful", zap.String("dst", dstAddr.String()))
+					return
+				}else{
 					kcpConn.Close()
 					err = errors.Wrap(err, "Create udp over tcp proxy entry failed")
-					return
 				}
-				log.GetLogger().Debug("create udp over kcp relay entry successful", zap.String("dst", dstAddr.String()))
 			}
 		}
 		var dst net.Conn
@@ -233,11 +234,11 @@ func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEn
 		} else {
 			log.GetLogger().Debug("create udp over tcp relay entry successful", zap.String("dst", dstAddr.String()))
 		}
-
 		if entry, err = createUDPOverTCPProxyEntry(dst, dstAddr, c.udpAddr, c.udpTimeout_); err != nil {
 			dst.Close()
 			err = errors.Wrap(err, "Create udp over tcp proxy entry failed")
 		}
+
 
 	} else {
 		var conn net.PacketConn

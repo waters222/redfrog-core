@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -117,8 +118,11 @@ func ReadUdpOverTcp(r io.Reader, buffer []byte) (int, error) {
 		return 0, err
 	}
 	packetSize := int(binary.BigEndian.Uint16(lenBuffer))
+
 	if packetSize <= len(buffer){
-		return io.ReadFull(r, buffer)
+		n, err :=  io.ReadFull(r, buffer[:packetSize])
+		//log.GetLogger().Debug("read udp over tcp buffer successful", zap.Int("size", packetSize))
+		return n, err
 	}else{
 		return 0, errors.New(fmt.Sprintf("udp packet too big: %d", packetSize))
 	}
@@ -133,5 +137,32 @@ func WriteUdpOverTcp(w io.Writer, buffer []byte) (int, error) {
 	if _, err := w.Write(b); err != nil{
 		return 0, err
 	}
-	return w.Write(buffer)
+
+	n, err := w.Write(buffer)
+	//log.GetLogger().Debug("write udp over tcp buffer successful", zap.Uint16("size", packetSize))
+	return n, err
+}
+
+func AddrToString(a socks.Addr) string {
+	var host, port string
+
+	switch a[0] { // address type
+	case socks.AtypDomainName:
+		host = string(a[2 : 2+int(a[1])])
+		port = strconv.Itoa((int(a[2+int(a[1])]) << 8) | int(a[2+int(a[1])+1]))
+	case socks.AtypIPv4:
+		host = net.IP(a[1 : 1+net.IPv4len]).String()
+		port = strconv.Itoa((int(a[1+net.IPv4len]) << 8) | int(a[1+net.IPv4len+1]))
+	case AtTypeUdpIpv4:
+		host = net.IP(a[1 : 1+net.IPv4len]).String()
+		port = strconv.Itoa((int(a[1+net.IPv4len]) << 8) | int(a[1+net.IPv4len+1]))
+	case socks.AtypIPv6:
+		host = net.IP(a[1 : 1+net.IPv6len]).String()
+		port = strconv.Itoa((int(a[1+net.IPv6len]) << 8) | int(a[1+net.IPv6len+1]))
+	case AtTypeUdpIpv6:
+		host = net.IP(a[1 : 1+net.IPv6len]).String()
+		port = strconv.Itoa((int(a[1+net.IPv6len]) << 8) | int(a[1+net.IPv6len+1]))
+	}
+
+	return net.JoinHostPort(host, port)
 }
