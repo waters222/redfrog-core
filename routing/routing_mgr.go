@@ -3,6 +3,7 @@ package routing
 import (
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/vishvananda/netlink"
 	"github.com/weishi258/go-iptables/iptables"
 	"github.com/weishi258/redfrog-core/common"
 	"github.com/weishi258/redfrog-core/config"
@@ -17,7 +18,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"github.com/vishvananda/netlink"
 )
 
 const (
@@ -53,8 +53,8 @@ type RoutingMgr struct {
 	ipSetV4     *ipset.IPSet
 	ipSetV6     *ipset.IPSet
 
-	routingTableNum   int
-	markMast		  string
+	routingTableNum int
+	markMast        string
 }
 
 func StartRoutingMgr(port int, mark string, routingTableNum int, ignoreIP []string, interfaceName []string, bIPSet bool) (ret *RoutingMgr, err error) {
@@ -63,19 +63,19 @@ func StartRoutingMgr(port int, mark string, routingTableNum int, ignoreIP []stri
 	ret.routingTableNum = routingTableNum
 	ret.markMast = mark
 
-	if err = ret.addDelRoutingRule(mark, routingTableNum, false, true); err != nil{
+	if err = ret.addDelRoutingRule(mark, routingTableNum, false, true); err != nil {
 		return
 	}
 	logger.Debug("Add routing rule ipv4 successful")
-	if err = ret.addDelRoutingRoute(routingTableNum, false, true); err != nil{
+	if err = ret.addDelRoutingRoute(routingTableNum, false, true); err != nil {
 		return
 	}
 	logger.Debug("Add routing route ipv4 successful")
-	if err = ret.addDelRoutingRule(mark, routingTableNum, true, true); err != nil{
+	if err = ret.addDelRoutingRule(mark, routingTableNum, true, true); err != nil {
 		return
 	}
 	logger.Debug("Add routing rule ipv6 successful")
-	if err = ret.addDelRoutingRoute( routingTableNum, true, true); err != nil{
+	if err = ret.addDelRoutingRoute(routingTableNum, true, true); err != nil {
 		return
 	}
 	logger.Debug("Add routing route ipv6 successful")
@@ -351,17 +351,17 @@ func (c *RoutingMgr) clearIPTables(iptbl *iptables.IPTables) {
 		}
 	}
 
-	if err := c.addDelRoutingRoute(c.routingTableNum, false, false); err != nil{
+	if err := c.addDelRoutingRoute(c.routingTableNum, false, false); err != nil {
 		logger.Error("Delete routing route failed", zap.String("error", err.Error()))
 	}
-	if err := c.addDelRoutingRule(c.markMast, c.routingTableNum, false, false); err != nil{
+	if err := c.addDelRoutingRule(c.markMast, c.routingTableNum, false, false); err != nil {
 		logger.Error("Delete routing rule failed", zap.String("error", err.Error()))
 	}
 
-	if err := c.addDelRoutingRoute(c.routingTableNum, true, false); err != nil{
+	if err := c.addDelRoutingRoute(c.routingTableNum, true, false); err != nil {
 		logger.Error("Delete routing route failed", zap.String("error", err.Error()))
 	}
-	if err := c.addDelRoutingRule(c.markMast, c.routingTableNum, true, false); err != nil{
+	if err := c.addDelRoutingRule(c.markMast, c.routingTableNum, true, false); err != nil {
 		logger.Error("Delete routing rule failed", zap.String("error", err.Error()))
 	}
 }
@@ -859,19 +859,19 @@ func (c *RoutingMgr) routingTableDelIPv6List(ips []string) error {
 	return nil
 }
 
-func (c* RoutingMgr) addDelRoutingRule(markMask string, routingTableNum int, isIPv6 bool, bAdd bool) error{
+func (c *RoutingMgr) addDelRoutingRule(markMask string, routingTableNum int, isIPv6 bool, bAdd bool) error {
 	rule := netlink.NewRule()
 	rule.Table = routingTableNum
 	marks := strings.Split(markMask, "/")
-	if len(marks) != 2{
+	if len(marks) != 2 {
 		return errors.New(fmt.Sprintf("Routing mark %s is invalid", markMask))
 	}
 	mark, err := strconv.ParseInt(marks[0], 0, 32)
-	if err != nil{
+	if err != nil {
 		return errors.Wrapf(err, "Routing mark parse to int failed")
 	}
 	mask, err := strconv.ParseInt(marks[1], 0, 32)
-	if err != nil{
+	if err != nil {
 		return errors.Wrapf(err, "Routing mask parse to int failed")
 	}
 
@@ -881,32 +881,32 @@ func (c* RoutingMgr) addDelRoutingRule(markMask string, routingTableNum int, isI
 	rule.Priority = ROUTING_PRIORITY
 	var rules []netlink.Rule
 
-	if isIPv6{
+	if isIPv6 {
 		rule.Family = netlink.FAMILY_V6
-		if rules, err = netlink.RuleList(netlink.FAMILY_V6); err != nil{
+		if rules, err = netlink.RuleList(netlink.FAMILY_V6); err != nil {
 			return errors.Wrap(err, "List routing rule from ipv6 failed")
 		}
-	}else{
+	} else {
 		rule.Family = netlink.FAMILY_V4
-		if rules, err = netlink.RuleList(netlink.FAMILY_V4); err != nil{
+		if rules, err = netlink.RuleList(netlink.FAMILY_V4); err != nil {
 			return errors.Wrap(err, "List routing rule from ipv4 failed")
 		}
 	}
-	for _, entry := range rules{
+	for _, entry := range rules {
 		//log.GetLogger().Debug("Get rule", zap.Int("table", entry.Table), zap.Int("mark", entry.Mark), zap.Int("mask", entry.Mask))
 		if entry.Table == rule.Table &&
 			entry.Mark == rule.Mark &&
-			entry.Mask == rule.Mask{
+			entry.Mask == rule.Mask {
 			// found one so to delete
 			// set family because it does not return rule family, its a BUG!!!
 			entry.Family = rule.Family
-			if err = netlink.RuleDel(&entry); err != nil{
+			if err = netlink.RuleDel(&entry); err != nil {
 				return errors.Wrapf(err, "Delete routing rule failed: %s", entry.String())
 			}
 		}
 	}
-	if bAdd{
-		if err = netlink.RuleAdd(rule); err != nil{
+	if bAdd {
+		if err = netlink.RuleAdd(rule); err != nil {
 			return errors.Wrapf(err, "Add routing rule failed: %s", rule.String())
 		}
 	}
@@ -914,35 +914,35 @@ func (c* RoutingMgr) addDelRoutingRule(markMask string, routingTableNum int, isI
 	return nil
 }
 
-func (c* RoutingMgr) addDelRoutingRoute(routingTableNum int, isIPv6 bool, bAdd bool) error{
+func (c *RoutingMgr) addDelRoutingRoute(routingTableNum int, isIPv6 bool, bAdd bool) error {
 	link, err := netlink.LinkByName("lo")
 	if err != nil {
 		return errors.Wrapf(err, "Get loop back dev failed")
 	}
 	var dst *net.IPNet
 	netFamily := netlink.FAMILY_V4
-	if isIPv6{
-		if _, dst, err = net.ParseCIDR("::/0"); err != nil{
+	if isIPv6 {
+		if _, dst, err = net.ParseCIDR("::/0"); err != nil {
 			return errors.Wrap(err, "Parse CIDR failed")
 		}
 		netFamily = netlink.FAMILY_V6
-	}else{
-		if _, dst, err = net.ParseCIDR("0.0.0.0/0"); err != nil{
+	} else {
+		if _, dst, err = net.ParseCIDR("0.0.0.0/0"); err != nil {
 			return errors.Wrap(err, "Parse CIDR failed")
 		}
 	}
 	route := &netlink.Route{LinkIndex: link.Attrs().Index,
-		Dst: dst,
-		Table: routingTableNum,
-		Type:  unix.RTN_LOCAL,
-		Scope: unix.RT_SCOPE_HOST,
+		Dst:      dst,
+		Table:    routingTableNum,
+		Type:     unix.RTN_LOCAL,
+		Scope:    unix.RT_SCOPE_HOST,
 		Priority: ROUTING_PRIORITY}
 
 	//| netlink.RT_FILTER_TYPE | netlink.RT_FILTER_SCOPE
-	if routes, err := netlink.RouteListFiltered(netFamily, route, netlink.RT_FILTER_TABLE | netlink.RT_FILTER_TYPE); err != nil{
+	if routes, err := netlink.RouteListFiltered(netFamily, route, netlink.RT_FILTER_TABLE|netlink.RT_FILTER_TYPE); err != nil {
 		return errors.Wrapf(err, "Route list failed")
-	}else{
-		for _, entry := range routes{
+	} else {
+		for _, entry := range routes {
 			//log.GetLogger().Debug("found routing rule", zap.Int("scope", int(entry.Scope)), zap.Int("type", entry.Type), zap.Int("table", entry.Table), zap.Int("LinkIndex", entry.LinkIndex))
 			//if entry.Dst != nil{
 			//	log.GetLogger().Debug(fmt.Sprintf("dst %s", entry.Dst.String()))
@@ -954,13 +954,13 @@ func (c* RoutingMgr) addDelRoutingRoute(routingTableNum int, isIPv6 bool, bAdd b
 			//	log.GetLogger().Debug(fmt.Sprintf("gw %s", entry.Gw.String()))
 			//}
 			if entry.Type == route.Type &&
-					entry.Table == route.Table &&
-					entry.LinkIndex == route.LinkIndex{
+				entry.Table == route.Table &&
+				entry.LinkIndex == route.LinkIndex {
 				// this is to fix bug which routeList not returning dst address
-				if entry.Dst == nil{
+				if entry.Dst == nil {
 					entry.Dst = dst
 				}
-				if err = netlink.RouteDel(&entry); err != nil{
+				if err = netlink.RouteDel(&entry); err != nil {
 					return errors.Wrapf(err, "Route delete failed: %s", entry.String())
 
 				}
@@ -972,12 +972,11 @@ func (c* RoutingMgr) addDelRoutingRoute(routingTableNum int, isIPv6 bool, bAdd b
 		}
 	}
 
-	if bAdd{
-		if err = netlink.RouteAdd(route); err != nil{
+	if bAdd {
+		if err = netlink.RouteAdd(route); err != nil {
 			return errors.Wrapf(err, "Route add failed: %s", route.String())
 		}
 	}
 
 	return nil
 }
-

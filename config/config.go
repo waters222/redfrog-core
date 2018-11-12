@@ -106,6 +106,7 @@ type RemoteServerConfig struct {
 	RemoteServer string       `yaml:"remote-server"`
 	Crypt        string       `yaml:"crypt"`
 	Password     string       `yaml:"password"`
+	UdpOverTcp   bool         `yaml:"udp-over-tcp"`
 	Kcptun       KcptunConfig `yaml:"kcptun"`
 }
 
@@ -160,7 +161,7 @@ func (c *DnsConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	raw := rawConfig{
 		SendNum: 1,
 		Cache:   true,
-		Timeout: 5,
+		Timeout: 10,
 	}
 
 	if err := unmarshal(&raw); err != nil {
