@@ -2,6 +2,9 @@ packet-mask: "0x1/0x1"
 routing-table: 100
 listen-port: 9090
 ipset: true
+ignore-ip:
+  - "192.168.0.0/24"
+  - "172.16.0.0/12"
 dns:
   listen-addr: "192.168.0.2:53"
   proxy-resolver:
@@ -24,8 +27,9 @@ shadowsocks:
       Password: "123321A"
       tcp-timeout: 20
       udp-timeout: 10
+      udp-over-tcp: true
       kcptun:
-        enable: false
+        enable: true
         server: "192.168.1.2:20010"
         mode: "fast"
         thread: 1

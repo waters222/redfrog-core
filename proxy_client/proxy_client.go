@@ -11,6 +11,7 @@ import (
 	"github.com/weishi258/redfrog-core/network"
 	"github.com/xtaci/smux"
 	"go.uber.org/zap"
+	"io"
 	"math"
 	"math/rand"
 	"net"
@@ -63,15 +64,14 @@ type udpProxyEntry struct {
 	timeout   time.Duration
 }
 
-
-func createProxyEntry(dstP net.PacketConn, dstT net.Conn, dstK *smux.Stream,dstAddr *net.UDPAddr, proxyAddr *net.UDPAddr, timeout time.Duration) (*udpProxyEntry, error){
+func createProxyEntry(dstP net.PacketConn, dstT net.Conn, dstK *smux.Stream, dstAddr *net.UDPAddr, proxyAddr *net.UDPAddr, timeout time.Duration) (*udpProxyEntry, error) {
 	addr, err := network.ConvertShadowSocksAddr(dstAddr.String())
 	if err != nil {
 		return nil, err
 	}
 	buf := make([]byte, len(addr))
 	copy(buf, addr)
-	return &udpProxyEntry{dstP, dstT, dstK,buf, proxyAddr, timeout}, nil
+	return &udpProxyEntry{dstP, dstT, dstK, buf, proxyAddr, timeout}, nil
 }
 
 func createUDPProxyEntry(dst net.PacketConn, dstAddr *net.UDPAddr, proxyAddr *net.UDPAddr, timeout time.Duration) (*udpProxyEntry, error) {
@@ -396,7 +396,10 @@ func (c *ProxyClient) Stop() {
 		backend.Stop()
 	}
 
-	c.udpBackend_.stop()
+	for _, v := range c.dnsProxy.dnsQueryMap {
+		// send nil signal to close
+		v <- nil
+	}
 
 	c.udpNatMap_.Lock()
 	defer c.udpNatMap_.Unlock()
@@ -407,10 +410,11 @@ func (c *ProxyClient) Stop() {
 		}
 	}
 
+	c.udpBackend_.stop()
+
 	logger.Info("ProxyClient stopped")
 
 }
-
 
 func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, data []byte, dataLen int) error {
 	logger := log.GetLogger()
@@ -433,11 +437,16 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 		}
 
 		c.udpNatMap_.Add(udpKey, udpProxy)
-		if udpProxy.dstUdp_ != nil{
+		if udpProxy.dstUdp_ != nil {
 			// now lets run copy from dst
 			go func() {
 				// copy udp from remote
 				defer func() {
+					if srcAddr == nil {
+						logger.Debug("dns relay entry quit", zap.String("src", udpProxy.dstUdp_.LocalAddr().String()), zap.String("dst", dstAddr.String()))
+					} else {
+						logger.Debug("udp relay entry quit", zap.String("src", srcAddr.String()), zap.String("dst", dstAddr.String()))
+					}
 					c.udpNatMap_.Lock()
 					defer c.udpNatMap_.Unlock()
 					udpProxy.dstUdp_.Close()
@@ -475,24 +484,34 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 				}
 
 			}()
-		}else{
+		} else {
 			// need to write header
-			if udpProxy.dstKcp_ != nil{
-				if _, err = udpProxy.dstKcp_.Write(udpProxy.header_); err != nil{
+			if udpProxy.dstKcp_ != nil {
+				if _, err = udpProxy.dstKcp_.Write(udpProxy.header_); err != nil {
 					return err
 				}
-			}else {
-				if _, err = udpProxy.dstTcp_.Write(udpProxy.header_); err != nil{
+			} else {
+				if _, err = udpProxy.dstTcp_.Write(udpProxy.header_); err != nil {
 					return err
 				}
 			}
-			go func(){
+			go func() {
 				defer func() {
+					if srcAddr == nil {
+						if udpProxy.dstKcp_ != nil {
+							logger.Debug("dns relay entry quit", zap.String("src", udpProxy.dstKcp_.LocalAddr().String()), zap.String("dst", dstAddr.String()))
+						} else {
+							logger.Debug("dns relay entry quit", zap.String("src", udpProxy.dstTcp_.LocalAddr().String()), zap.String("dst", dstAddr.String()))
+						}
+
+					} else {
+						logger.Debug("udp relay entry quit", zap.String("src", srcAddr.String()), zap.String("dst", dstAddr.String()))
+					}
 					c.udpNatMap_.Lock()
 					defer c.udpNatMap_.Unlock()
-					if udpProxy.dstKcp_ != nil{
+					if udpProxy.dstKcp_ != nil {
 						udpProxy.dstKcp_.Close()
-					}else{
+					} else {
 						udpProxy.dstTcp_.Close()
 					}
 					c.udpNatMap_.Del(udpKey)
@@ -501,18 +520,20 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 				buffer := c.udpBuffer_.Get()
 				defer c.udpBuffer_.Put(buffer)
 				var n int
-				for{
+				for {
 
-					if udpProxy.dstKcp_ != nil{
+					if udpProxy.dstKcp_ != nil {
 						n, err = common.ReadUdpOverTcp(udpProxy.dstKcp_, buffer)
 						udpProxy.dstKcp_.SetReadDeadline(time.Now().Add(udpProxy.timeout))
-					}else{
+					} else {
 						n, err = common.ReadUdpOverTcp(udpProxy.dstTcp_, buffer)
 						udpProxy.dstTcp_.SetReadDeadline(time.Now().Add(udpProxy.timeout))
 					}
-					if err != nil{
-						if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
-							logger.Error("Read udp over tcp from remote dst failed", zap.String("error", err.Error()))
+					if err != nil {
+						if err != io.EOF {
+							if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
+								logger.Error("Read udp over tcp from remote dst failed", zap.String("error", err.Error()))
+							}
 						}
 						return
 					}
@@ -536,7 +557,7 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 	if totalLen > c.udpBuffer_.GetBufferSize() {
 		return errors.New(fmt.Sprintf("udp packet too big: %d > %d", totalLen, common.UDP_BUFFER_SIZE))
 	}
-	if udpProxy.dstUdp_ != nil{
+	if udpProxy.dstUdp_ != nil {
 		// get leaky buffer
 		newBuffer := c.udpBuffer_.Get()
 		defer c.udpBuffer_.Put(newBuffer)
@@ -548,14 +569,14 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 			return err
 		}
 		udpProxy.dstUdp_.SetReadDeadline(time.Now().Add(udpProxy.timeout))
-	}else{
-		if udpProxy.dstKcp_ != nil{
-			if _, err := common.WriteUdpOverTcp(udpProxy.dstKcp_, data[:dataLen]); err != nil{
+	} else {
+		if udpProxy.dstKcp_ != nil {
+			if _, err := common.WriteUdpOverTcp(udpProxy.dstKcp_, data[:dataLen]); err != nil {
 				return err
 			}
 			udpProxy.dstKcp_.SetReadDeadline(time.Now().Add(udpProxy.timeout))
-		}else{
-			if _, err := common.WriteUdpOverTcp(udpProxy.dstTcp_, data[:dataLen]); err != nil{
+		} else {
+			if _, err := common.WriteUdpOverTcp(udpProxy.dstTcp_, data[:dataLen]); err != nil {
 				return err
 			}
 			udpProxy.dstTcp_.SetReadDeadline(time.Now().Add(udpProxy.timeout))
@@ -609,7 +630,7 @@ func (c *ProxyClient) ExchangeDNS(dnsAddr string, data []byte, timeout time.Dura
 	binary.BigEndian.PutUint16(data, dnsId)
 
 	err = c.relayUDPData(computeDnsKey(dnsAddr), nil, dstAddr, data, len(data))
-	if err != nil{
+	if err != nil {
 		return nil, err
 	}
 	sig := make(chan *dns.Msg)
@@ -621,7 +642,12 @@ func (c *ProxyClient) ExchangeDNS(dnsAddr string, data []byte, timeout time.Dura
 	timeoutTimer := time.NewTimer(timeout)
 	select {
 	case dnsResponse := <-sig:
-		return dnsResponse, nil
+		if dnsResponse == nil {
+			return nil, errors.New("dns sig channel close")
+		} else {
+			return dnsResponse, nil
+		}
+
 	case <-timeoutTimer.C:
 		// remove from map and recycle id after timeout triggered
 		c.dnsProxy.dnsQueryMapMux.Lock()

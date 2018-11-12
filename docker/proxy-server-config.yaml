@@ -19,5 +19,5 @@ servers:
     dscp: 0
     nocomp: false
     keep-alive-interval: 10
-    keep-alive-timeout: 120
+    keep-alive-timeout: 30
     sock-buf : 4194304

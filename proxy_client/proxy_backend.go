@@ -15,15 +15,15 @@ import (
 )
 
 type proxyBackend struct {
-	cipher_            	core.Cipher
-	tcpAddr            	net.TCPAddr
-	udpAddr            	*net.UDPAddr
-	remoteServerConfig 	config.RemoteServerConfig
+	cipher_            core.Cipher
+	tcpAddr            net.TCPAddr
+	udpAddr            *net.UDPAddr
+	remoteServerConfig config.RemoteServerConfig
 
-	networkType_ 		string
-	tcpTimeout_  		time.Duration
-	udpTimeout_  		time.Duration
-	kcpBackend   		*KCPBackend
+	networkType_ string
+	tcpTimeout_  time.Duration
+	udpTimeout_  time.Duration
+	kcpBackend   *KCPBackend
 
 	//dnsResolver *dnsProxyResolver
 }
@@ -213,7 +213,7 @@ func (c *proxyBackend) RelayTCPData(src net.Conn) (inboundSize int64, outboundSi
 
 func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEntry, err error) {
 
-	if c.remoteServerConfig.UdpOverTcp{
+	if c.remoteServerConfig.UdpOverTcp {
 		if c.kcpBackend != nil {
 			// try to get an KCP steam connection, if not fall back to default proxy mode
 			var kcpConn *smux.Stream
@@ -223,12 +223,15 @@ func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEn
 					err = errors.Wrap(err, "Create udp over tcp proxy entry failed")
 					return
 				}
+				log.GetLogger().Debug("create udp over kcp relay entry successful", zap.String("dst", dstAddr.String()))
 			}
 		}
 		var dst net.Conn
 		if dst, err = c.createTCPConn(); err != nil {
 			err = errors.Wrap(err, "Create remote conn failed")
 			return
+		} else {
+			log.GetLogger().Debug("create udp over tcp relay entry successful", zap.String("dst", dstAddr.String()))
 		}
 
 		if entry, err = createUDPOverTCPProxyEntry(dst, dstAddr, c.udpAddr, c.udpTimeout_); err != nil {
@@ -236,7 +239,7 @@ func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEn
 			err = errors.Wrap(err, "Create udp over tcp proxy entry failed")
 		}
 
-	}else{
+	} else {
 		var conn net.PacketConn
 		conn, err = net.ListenPacket("udp", "")
 		if err != nil {
@@ -249,11 +252,11 @@ func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEn
 			conn.Close()
 			err = errors.Wrap(err, "Create udp proxy entry failed")
 		}
+		log.GetLogger().Debug("create udp relay entry successful", zap.String("dst", dstAddr.String()))
 	}
 
 	return
 }
-
 
 //func (c *proxyBackend) ResolveDNS(headerLen int, payload []byte, timeout time.Duration) (*dns.Msg, error) {
 //	// we use half of udp timeout for dns timeout
