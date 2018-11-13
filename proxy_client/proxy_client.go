@@ -56,6 +56,7 @@ type relayDataRes struct {
 }
 
 type udpProxyEntry struct {
+	sync.RWMutex
 	dstUdp_   net.PacketConn
 	dstTcp_   net.Conn
 	dstKcp_   *smux.Stream
@@ -71,7 +72,7 @@ func createProxyEntry(dstP net.PacketConn, dstT net.Conn, dstK *smux.Stream, dst
 	}
 	buf := make([]byte, len(addr))
 	copy(buf, addr)
-	return &udpProxyEntry{dstP, dstT, dstK, buf, proxyAddr, timeout}, nil
+	return &udpProxyEntry{dstUdp_:dstP, dstTcp_: dstT, dstKcp_: dstK, header_: buf, proxyAddr: proxyAddr, timeout: timeout, }, nil
 }
 
 func createUDPProxyEntry(dst net.PacketConn, dstAddr *net.UDPAddr, proxyAddr *net.UDPAddr, timeout time.Duration) (*udpProxyEntry, error) {
@@ -420,24 +421,23 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 	logger := log.GetLogger()
 
 	c.udpNatMap_.Lock()
-	defer c.udpNatMap_.Unlock()
-
 	udpProxy := c.udpNatMap_.Get(udpKey)
-
-	//logger.Debug("UDP relay ",zap.String("srcAddr", srcAddr.String()), zap.String("dstAddr", dstAddr.String()))
 	if udpProxy == nil {
-
 		backendProxy := c.getBackendProxy()
 		if backendProxy == nil {
+			c.udpNatMap_.Unlock()
 			return errors.New("Can not get backend proxy")
 		}
 		var err error
 		if udpProxy, err = backendProxy.GetUDPRelayEntry(dstAddr); err != nil {
+			c.udpNatMap_.Unlock()
 			return errors.Wrap(err, "UDP proxy listen local failed ")
 		}
-
 		c.udpNatMap_.Add(udpKey, udpProxy)
+		udpProxy.Lock()
+		c.udpNatMap_.Unlock()
 		if udpProxy.dstUdp_ != nil {
+			udpProxy.Unlock()
 			// now lets run copy from dst
 			go func() {
 				// copy udp from remote
@@ -448,9 +448,10 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 						logger.Debug("udp relay entry quit", zap.String("src", srcAddr.String()), zap.String("dst", dstAddr.String()))
 					}
 					c.udpNatMap_.Lock()
-					defer c.udpNatMap_.Unlock()
-					udpProxy.dstUdp_.Close()
 					c.udpNatMap_.Del(udpKey)
+					c.udpNatMap_.Unlock()
+					udpProxy.dstUdp_.Close()
+
 				}()
 
 				buffer := c.udpBuffer_.Get()
@@ -488,15 +489,33 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 
 			}()
 		} else {
-			// need to write header
 			if udpProxy.dstKcp_ != nil {
-				if _, err = udpProxy.dstKcp_.Write(udpProxy.header_); err != nil {
-					return err
-				}
+				udpProxy.dstKcp_.SetWriteDeadline(time.Now().Add(udpProxy.timeout))
+				_, err = udpProxy.dstKcp_.Write(udpProxy.header_)
 			} else {
-				if _, err = udpProxy.dstTcp_.Write(udpProxy.header_); err != nil {
-					return err
+				udpProxy.dstKcp_.SetWriteDeadline(time.Now().Add(udpProxy.timeout))
+				_, err = udpProxy.dstTcp_.Write(udpProxy.header_)
+			}
+
+			if err != nil{
+				if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
+					logger.Info("write udp over tcp failed", zap.String("error", err.Error()))
+				}else{
+					logger.Info("write udp over tcp with timeout", zap.Duration("timeout", udpProxy.timeout))
 				}
+				// close the connection
+				c.udpNatMap_.Lock()
+				c.udpNatMap_.Del(udpKey)
+				c.udpNatMap_.Unlock()
+				if udpProxy.dstKcp_ != nil {
+					udpProxy.dstKcp_.Close()
+				}else{
+					udpProxy.dstTcp_.Close()
+				}
+				udpProxy.Unlock()
+				return err
+			}else{
+				udpProxy.Unlock()
 			}
 			go func() {
 				defer func() {
@@ -511,13 +530,13 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 						logger.Debug("udp relay entry quit", zap.String("src", srcAddr.String()), zap.String("dst", dstAddr.String()))
 					}
 					c.udpNatMap_.Lock()
-					defer c.udpNatMap_.Unlock()
+					c.udpNatMap_.Del(udpKey)
+					c.udpNatMap_.Unlock()
 					if udpProxy.dstKcp_ != nil {
 						udpProxy.dstKcp_.Close()
 					} else {
 						udpProxy.dstTcp_.Close()
 					}
-					c.udpNatMap_.Del(udpKey)
 				}()
 
 				buffer := c.udpBuffer_.Get()
@@ -554,7 +573,10 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 			}()
 		}
 
+	}else{
+		c.udpNatMap_.Unlock()
 	}
+
 
 	headerLen := len(udpProxy.header_)
 	totalLen := headerLen + dataLen
@@ -575,17 +597,37 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 		}
 		udpProxy.dstUdp_.SetReadDeadline(time.Now().Add(udpProxy.timeout))
 	} else {
+		var err error
+		udpProxy.RLock()
+		defer udpProxy.RUnlock()
 		if udpProxy.dstKcp_ != nil {
-			if _, err := common.WriteUdpOverTcp(udpProxy.dstKcp_, data[:dataLen]); err != nil {
-				return err
-			}
-			udpProxy.dstKcp_.SetReadDeadline(time.Now().Add(udpProxy.timeout))
+			udpProxy.dstKcp_.SetWriteDeadline(time.Now().Add(udpProxy.timeout))
+			_, err = common.WriteUdpOverTcp(udpProxy.dstKcp_, data[:dataLen])
 		} else {
-			if _, err := common.WriteUdpOverTcp(udpProxy.dstTcp_, data[:dataLen]); err != nil {
-				return err
+			udpProxy.dstTcp_.SetWriteDeadline(time.Now().Add(udpProxy.timeout))
+			_, err = common.WriteUdpOverTcp(udpProxy.dstTcp_, data[:dataLen])
+		}
+
+		if err != nil{
+			if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
+				logger.Info("write udp over tcp failed", zap.String("error", err.Error()))
+			}else{
+				logger.Info("write udp over tcp with timeout", zap.Duration("timeout", udpProxy.timeout))
 			}
+			// close the connection
+			if udpProxy.dstKcp_ != nil {
+				udpProxy.dstKcp_.SetReadDeadline(time.Now())
+			}else{
+				udpProxy.dstTcp_.SetReadDeadline(time.Now())
+			}
+			return err
+		}
+		if udpProxy.dstKcp_ != nil {
+			udpProxy.dstKcp_.SetReadDeadline(time.Now().Add(udpProxy.timeout))
+		}else{
 			udpProxy.dstTcp_.SetReadDeadline(time.Now().Add(udpProxy.timeout))
 		}
+
 
 	}
 	return nil
