@@ -1,73 +1,46 @@
 packet-mask: "0x1/0x1"
 routing-table: 100
 listen-port: 9090
-ignore-ip:
-  - "192.168.0.0/16"
-  - "172.16.0.0/12"
-  - "10.0.0.0/8"
+ipset: true
 dns:
-  listen-addr: "0.0.0.0:53"
-  local-resolver:
-    - "1.1.1.1"
+  listen-addr: "192.168.0.2:53"
   proxy-resolver:
-    - "1.1.1.1"
+  - "127.0.0.11"
   timeout: 5
-  cache: true
+  cache: false
   filter:
     enable: true
     white-list:
-      - "white.txt"
+    - "white.txt"
     black-list:
-      - "black.txt"
+    - "black.txt"
 pac-list:
   - "gfw-list.txt"
   - "custom-list.txt"
 shadowsocks:
   servers:
-    - enable: true
-      remote-server: "65.49.196.94:20000"
-      crypt: "AEAD_CHACHA20_POLY1305"
-      Password: "123321A"
-      tcp-timeout: 120
-      udp-timeout: 60
-      kcptun:
-        enable: true
-        server: "65.49.196.94:20010"
-        mode: "fast"
-        thread: 4
-        conn: 4
-        autoexpire: 0
-        mtu: 1350
-        sndwnd: 128
-        rcvwnd: 512
-        datashard: -1
-        parityshard: -1
-        dscp: 0
-        nocomp: false
-        keep-alive-interval: 10
-        keep-alive-timeout: 30
-        sock-buf : 4194304
-    - enable: true
-      remote-server: "149.28.13.248:20000"
-      crypt: "AEAD_CHACHA20_POLY1305"
-      Password: "123321A"
-      tcp-timeout: 120
-      udp-timeout: 60
-      kcptun:
-        enable: true
-        server: "149.28.13.248:20001"
-        mode: "fast"
-        thread: 4
-        conn: 4
-        autoexpire: 0
-        mtu: 1350
-        sndwnd: 128
-        rcvwnd: 512
-        datashard: -1
-        parityshard: -1
-        dscp: 0
-        nocomp: false
-        keep-alive-interval: 10
-        keep-alive-timeout: 30
-        sock-buf : 4194304
+  - enable: true
+    remote-server: "192.168.1.2:20000"
+    crypt: "AEAD_CHACHA20_POLY1305"
+    Password: "123321A"
+    tcp-timeout: 20
+    udp-timeout: 10
+    udp-over-tcp: true
+    kcptun:
+      enable: true
+      server: "192.168.1.2:20010"
+      mode: "fast"
+      thread: 1
+      conn: 1
+      autoexpire: 0
+      mtu: 1350
+      sndwnd: 128
+      rcvwnd: 512
+      datashard: -1
+      parityshard: -1
+      dscp: 0
+      nocomp: false
+      keep-alive-interval: 10
+      keep-alive-timeout: 30
+      sock-buf : 4194304
 
