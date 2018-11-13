@@ -495,7 +495,7 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 				udpProxy.dstKcp_.SetWriteDeadline(time.Now().Add(udpProxy.timeout))
 				_, err = udpProxy.dstKcp_.Write(udpProxy.header_)
 			} else {
-				udpProxy.dstKcp_.SetWriteDeadline(time.Now().Add(udpProxy.timeout))
+				udpProxy.dstTcp_.SetWriteDeadline(time.Now().Add(udpProxy.timeout))
 				_, err = udpProxy.dstTcp_.Write(udpProxy.header_)
 			}
 
