@@ -69,12 +69,12 @@ func main() {
 
 	// print version
 	if printVer {
-		if Version != ""{
+		if Version != "" {
 			logger.Info(appName,
 				zap.String("Version", Version),
 				zap.String("Rev", RevInfo),
 				zap.String("BuildTime", BuildTime))
-		}else{
+		} else {
 			logger.Info(appName,
 				zap.String("Version", Version),
 				zap.String("Rev", RevInfo),
@@ -144,7 +144,7 @@ func StartService(configFile string) {
 	// init routing mgr
 	var routingMgr *routing.RoutingMgr
 	if routingMgr, err = routing.StartRoutingMgr(config.ListenPort, config.PacketMask, config.RoutingTable, config.IgnoreIP, config.Interface, config.IPSet); err != nil {
-		logger.Error("Init routing manager failed", zap.String("error", err.Error()))
+		logger.Error("Start routing manager failed", zap.String("error", err.Error()))
 		return
 	}
 	defer routingMgr.Stop()

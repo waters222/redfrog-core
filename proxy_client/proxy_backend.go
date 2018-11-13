@@ -25,7 +25,7 @@ type proxyBackend struct {
 	udpTimeout_  time.Duration
 	kcpBackend   *KCPBackend
 
-	//dnsResolver *dnsProxyResolver
+	//dnsResolver *DnsSyncResolver
 }
 
 const (
@@ -263,7 +263,7 @@ func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEn
 //	return c.dnsResolver.resolveDNS(headerLen, payload, timeout, c.udpAddr)
 //}
 //
-//type dnsProxyResolver struct {
+//type DnsSyncResolver struct {
 //	//dnsConn    net.PacketConn
 //	dnsIdQueue chan uint16
 //
@@ -272,8 +272,8 @@ func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEn
 //	buffer         *common.LeakyBuffer
 //}
 //
-//func StartDnsResolver(cipher core.Cipher) (ret *dnsProxyResolver, err error) {
-//	ret = &dnsProxyResolver{}
+//func StartDnsResolver(cipher core.Cipher) (ret *DnsSyncResolver, err error) {
+//	ret = &DnsSyncResolver{}
 //	//if ret.dnsConn, err = net.ListenPacket("udp4", ""); err != nil {
 //	//	err = errors.Wrap(err, "Dns conn listening failed")
 //	//	return
@@ -290,11 +290,11 @@ func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEn
 //	return
 //}
 //
-//func (c *dnsProxyResolver) Stop() error {
+//func (c *DnsSyncResolver) Stop() error {
 //	//return c.dnsConn.Close()
 //}
 //
-//func (c *dnsProxyResolver) processResponse() {
+//func (c *DnsSyncResolver) processResponse() {
 //	logger := log.GetLogger()
 //
 //	udpKey := computeUDPKey(srcAddr, dstAddr)
@@ -317,7 +317,7 @@ func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEn
 //	//}
 //}
 //
-//func (c *dnsProxyResolver) processDns(buffer []byte, dataLen int) {
+//func (c *DnsSyncResolver) processDns(buffer []byte, dataLen int) {
 //	logger := log.GetLogger()
 //	defer c.buffer.Put(buffer)
 //	// lets process response
@@ -358,7 +358,7 @@ func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEn
 //
 //}
 //
-//func (c *dnsProxyResolver) resolveDNS(headerLen int, payload []byte, timeout time.Duration, addr *net.UDPAddr) (*dns.Msg, error) {
+//func (c *DnsSyncResolver) resolveDNS(headerLen int, payload []byte, timeout time.Duration, addr *net.UDPAddr) (*dns.Msg, error) {
 //
 //	// get un-used id from queue
 //	dnsId := <-c.dnsIdQueue
