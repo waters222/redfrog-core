@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	. "github.com/weishi258/redfrog-core/config"
 	"github.com/weishi258/redfrog-core/log"
 	"github.com/weishi258/redfrog-core/proxy_server/impl"
@@ -14,7 +15,11 @@ import (
 )
 
 var Version string
+var RevInfo string
 var BuildTime string
+const (
+	appName = "RedFrog Server"
+)
 
 func main() {
 
@@ -50,15 +55,23 @@ func main() {
 
 	// print version
 	if printVer {
-		logger.Info("RedFrog Server",
-			zap.String("Version", Version),
-			zap.String("BuildTime", BuildTime))
+		if Version != ""{
+			logger.Info(appName,
+				zap.String("Version", Version),
+				zap.String("Rev", RevInfo),
+				zap.String("BuildTime", BuildTime))
+		}else{
+			logger.Info(appName,
+				zap.String("Rev", RevInfo),
+				zap.String("BuildTime", BuildTime))
+		}
+
 		os.Exit(0)
 	}
 
 	defer func() {
 		logger.Sync()
-		logger.Info("RedFrog is stopped")
+		logger.Info(fmt.Sprintf("%s is stopped", appName))
 		if err != nil {
 			os.Exit(1)
 		} else {
@@ -92,7 +105,7 @@ func main() {
 		}
 	}()
 
-	logger.Info("RefFrog server is up and running")
+	logger.Info(fmt.Sprintf("%s is up and running", appName))
 
 	sigChan := make(chan os.Signal, 1)
 	done := make(chan bool)
@@ -104,7 +117,7 @@ func main() {
 	go func() {
 		sig := <-sigChan
 
-		logger.Info("RefFrog caught signal for exit",
+		logger.Info(fmt.Sprintf("%s caught signal for exit", appName),
 			zap.Any("signal", sig))
 		done <- true
 	}()

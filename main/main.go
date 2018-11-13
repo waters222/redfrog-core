@@ -23,11 +23,16 @@ import (
 const DNS_MOCK_TIMEOUT_MUTIPLIER = 10
 
 var Version string
+var RevInfo string
 var BuildTime string
 
 var serviceStopSignal chan bool
 var appRunStatus chan bool
 var sigChan chan os.Signal
+
+const (
+	appName = "RedFrog Client"
+)
 
 func main() {
 
@@ -64,15 +69,24 @@ func main() {
 
 	// print version
 	if printVer {
-		logger.Info("RedFrog",
-			zap.String("Version", Version),
-			zap.String("BuildTime", BuildTime))
+		if Version != ""{
+			logger.Info(appName,
+				zap.String("Version", Version),
+				zap.String("Rev", RevInfo),
+				zap.String("BuildTime", BuildTime))
+		}else{
+			logger.Info(appName,
+				zap.String("Version", Version),
+				zap.String("Rev", RevInfo),
+				zap.String("BuildTime", BuildTime))
+		}
+
 		os.Exit(0)
 	}
 
 	defer func() {
 		logger.Sync()
-		logger.Info("RedFrog is exit")
+		logger.Info(fmt.Sprintf("%s is exit", appName))
 		if err != nil {
 			os.Exit(1)
 		} else {
@@ -97,7 +111,7 @@ func main() {
 	}
 
 	sig := <-sigChan
-	logger.Info("RefFrog caught signal for exit", zap.Any("signal", sig))
+	logger.Info(fmt.Sprintf("%s caught signal for exit", appName), zap.Any("signal", sig))
 	serviceStopSignal <- true
 	<-appRunStatus
 	return
@@ -161,7 +175,7 @@ func StartService(configFile string) {
 
 	status = true
 
-	logger.Info("RefFrog service is up and running")
+	logger.Info(fmt.Sprintf("%s service is up and running", appName))
 
 	appRunStatus <- true
 
@@ -192,7 +206,7 @@ func StartService(configFile string) {
 
 			//pacListMgr.ReadPacList()
 		case <-serviceStopSignal:
-			logger.Info("RedFrog service is stopped")
+			logger.Info(fmt.Sprintf("%s service is stopped", appName))
 			return
 		}
 	}
