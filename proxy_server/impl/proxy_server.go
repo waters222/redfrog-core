@@ -204,7 +204,7 @@ func (c *ProxyServer) handleUDPOverTCP(conn net.Conn, dstAddrBytes socks.Addr) {
 				return
 			}
 		}
-		if packetSize > 0{
+		if packetSize > 0 {
 			if _, err = remoteConn.Write(buffer[:packetSize]); err != nil {
 				logger.Error("tcp write udp to remote failed", zap.String("addr", dstAddr.String()), zap.String("error", err.Error()))
 				return
