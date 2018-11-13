@@ -1,31 +1,46 @@
+packet-mask: "0x1/0x1"
+routing-table: 100
+listen-port: 9090
+ipset: true
 dns:
-  listen-addr: "127.0.0.1:5300"
-  local-resolver:
-    - "114.114.114.114"
+  listen-addr: "192.168.0.2:53"
   proxy-resolver:
-    - "8.8.4.4"
+  - "127.0.0.11"
+  timeout: 5
+  cache: false
+  filter:
+    enable: true
+    white-list:
+    - "white.txt"
+    black-list:
+    - "black.txt"
+pac-list:
+  - "gfw-list.txt"
+  - "custom-list.txt"
 shadowsocks:
-  listen-addr: "127.0.0.1:909"
-  udp-timeout: 120
-  pac-list:
-    - "gfw-list.txt"
-    - "gfw-list.txt"
   servers:
-    - remote-server: "146.71.79.80:8445"
-      crypt: "AEAD_CHACHA20_POLY1305"
-      key: "123321A"
-      kcptun:
-        remote-server: "146.71.79.80:8446"
-        key: "JumpJumpJump!!!"
-        crypt: "salsa20"
-        mode: "fast"
-        conn: 1
-        autoexpire: 0
-        mtu: 1350
-        sndwnd: 128
-        rcvwnd: 512
-        datashard: 10
-        parityshard: 3
-        dscp: 0
-        nocomp: false
+  - enable: true
+    remote-server: "192.168.1.2:20000"
+    crypt: "AEAD_CHACHA20_POLY1305"
+    Password: "123321A"
+    tcp-timeout: 20
+    udp-timeout: 10
+    udp-over-tcp: true
+    kcptun:
+      enable: true
+      server: "192.168.1.2:20010"
+      mode: "fast"
+      thread: 1
+      conn: 1
+      autoexpire: 0
+      mtu: 1350
+      sndwnd: 128
+      rcvwnd: 512
+      datashard: -1
+      parityshard: -1
+      dscp: 0
+      nocomp: false
+      keep-alive-interval: 10
+      keep-alive-timeout: 30
+      sock-buf : 4194304
 

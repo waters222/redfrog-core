@@ -1,6 +1,11 @@
 
 # Created by https://www.gitignore.io/api/go,linux,macos,windows
 ### Customized ###
+
+Gopkg.lock
+Gopkg.toml
+routing_mgr_cache.yaml
+vendor/
 *~
 .DS_Store
 .vagrant

@@ -1,0 +1,198 @@
+# Block Skype banner ads
+127.0.0.1   rad.msn.com
+127.0.0.1   g.msn.com
+127.0.0.1   live.rads.msn.com
+127.0.0.1   apps.skype.com
+# SKYPE NEW  7.27.64.101
+127.0.0.1   s0.2mdn.net
+127.0.0.1   s1.2mdn.net
+127.0.0.1   ad.doubleclick.net
+127.0.0.1   secure.adnxs.com
+127.0.0.1   ib.adnxs.com
+127.0.0.1   pixel.alephd.com
+127.0.0.1   cdn.at.atwola.com
+# SKYPE NEW  7.30.64.105
+127.0.0.1    sgreen.erne.co
+127.0.0.1    dps.bing.com
+
+# BitComet (torrent client)
+127.0.0.1	inside.bitcomet.com
+
+## Tracking/ads/unwanted content
+# Google ADS
+127.0.0.1	partner.googleadservices.com
+
+# DoubleClick
+127.0.0.1	ad.doubleclick.net
+127.0.0.1	static.doubleclick.net
+127.0.0.1	partnerad.l.doubleclick.net
+127.0.0.1	pubads.g.doubleclick.net
+127.0.0.1	stats.g.doubleclick.net
+127.0.0.1   cm.g.doubleclick.net
+
+0.0.0.0 adclick.g.doublecklick.net
+
+0.0.0.0 adeventtracker.spotify.com
+
+0.0.0.0 ads-fa.spotify.com
+
+0.0.0.0 analytics.spotify.com
+
+0.0.0.0 audio2.spotify.com
+
+0.0.0.0 b.scorecardresearch.com
+
+0.0.0.0 bounceexchange.com
+
+0.0.0.0 bs.serving-sys.com
+
+0.0.0.0 content.bitsontherun.com
+
+0.0.0.0 core.insightexpressai.com
+
+0.0.0.0 crashdump.spotify.com
+
+0.0.0.0 d2gi7ultltnc2u.cloudfront.net
+
+0.0.0.0 d3rt1990lpmkn.cloudfront.net
+
+0.0.0.0 desktop.spotify.com
+
+0.0.0.0 doubleclick.net
+
+0.0.0.0 ds.serving-sys.com
+
+0.0.0.0 googleadservices.com
+
+0.0.0.0 googleads.g.doubleclick.net
+
+0.0.0.0 gtssl2-ocsp.geotrust.com
+
+0.0.0.0 js.moatads.com
+
+0.0.0.0 log.spotify.com
+
+0.0.0.0 media-match.com
+
+0.0.0.0 omaze.com
+
+0.0.0.0 open.spotify.com
+
+0.0.0.0 pagead46.l.doubleclick.net
+
+0.0.0.0 pagead2.googlesyndication.com
+
+0.0.0.0 partner.googleadservices.com
+
+0.0.0.0 pubads.g.doubleclick.net
+
+0.0.0.0 redirector.gvt1.com
+
+0.0.0.0 s0.2mdn.net
+
+0.0.0.0 securepubads.g.doubleclick.net
+
+
+0.0.0.0 tpc.googlesyndication.com
+
+0.0.0.0 v.jwpcdn.com
+
+0.0.0.0 video-ad-stats.googlesyndication.com
+
+0.0.0.0 weblb-wg.gslb.spotify.com
+
+0.0.0.0 www.googleadservices.com
+
+0.0.0.0 www.googletagservices.com
+
+0.0.0.0 www.omaze.com
+
+### xiaomi
+127.0.0.1 api.ad.xiaomi.com
+127.0.0.1 sdkconfig.ad.xiaomi.com
+127.0.0.1 ad.mi.com
+127.0.0.1 ad.xiaomi.com
+127.0.0.1 ad1.xiaomi.com
+
+127.0.0.1 adv.sec.miui.com
+127.0.0.1 test.ad.xiaomi.com
+127.0.0.1 new.api.ad.xiaomi.com
+
+127.0.0.1 cdn.ad.xiaomi.com
+127.0.0.1 e.ad.xiaomi.com
+127.0.0.1 test.new.api.ad.xiaomi.com
+
+127.0.0.1 ssp.ad.xiaomi.com
+127.0.0.1 o2o.api.xiaomi.com
+
+# tcpdump
+
+127.0.0.1 api.cupid.ptqy.gitv.tv
+127.0.0.1 de.pandora.xiaomi.com
+127.0.0.1 mishop.pandora.xiaomi.com
+127.0.0.1 auth.api.gitv.tv
+127.0.0.1 misc.pandora.xiaomi.com
+127.0.0.1 tvapi.kuyun.com
+127.0.0.1 data.mistat.xiaomi.com
+127.0.0.1 tv.aiseet.atianqi.com
+127.0.0.1 vv.play.aiseet.atianqi.com
+127.0.0.1 gallery.pandora.xiaomi.com
+127.0.0.1 config.kuyun.com
+127.0.0.1 bss.pandora.xiaomi.com
+127.0.0.1 o2o.api.xiaomi.com
+127.0.0.1 dvb.pandora.xiaomi.com
+127.0.0.1 alog.umeng.com
+127.0.0.1 pandora.mi.com
+127.0.0.1 api.ad.xiaomi.com
+127.0.0.1 tvapi.kuyun.com
+127.0.0.1 sdkconfig.ad.xiaomi.com
+127.0.0.1 assistant.pandora.xiaomi.com
+127.0.0.1 tracking.miui.com
+127.0.0.1 misc.pandora.xiaomi.com
+127.0.0.1 gvod.aiseejapp.atianqi.com
+127.0.0.1 omgmta.play.aiseet.atianqi.com
+127.0.0.1 jellyfish.pandora.xiaomi.com
+127.0.0.1 starfish.pandora.xiaomi.com
+127.0.0.1 misc.in.duokanbox.com
+sv-video.play.aiseet.atianqi.com
+
+#优酷
+127.0.0.1 atm.youku.com
+127.0.0.1 fvid.atm.youku.com
+127.0.0.1 html.atm.youku.com
+127.0.0.1 valb.atm.youku.com
+127.0.0.1 valf.atm.youku.com
+127.0.0.1 valo.atm.youku.com
+127.0.0.1 valp.atm.youku.com
+127.0.0.1 Lstat.youku.com
+127.0.0.1 speed.lstat.youku.com
+127.0.0.1 urchin.lstat.youku.com
+127.0.0.1 stat.youku.com
+127.0.0.1 static.lstat.youku.com
+127.0.0.1 valc.atm.youku.com
+127.0.0.1 vid.atm.youku.com
+127.0.0.1 walp.atm.youku.com
+
+#百度：
+127.0.0.1 a.baidu.cOm
+127.0.0.1 baidutv.baidu.com
+127.0.0.1 bar.baidu.com
+127.0.0.1 c.baidu.com
+127.0.0.1 cjhq.baidu.com
+127.0.0.1 cpro.baidu.com
+127.0.0.1 drmcmm.baidu.com
+127.0.0.1 e.baidu.com
+127.0.0.1 eiv.baidu.com
+127.0.0.1 hc.baidu.com
+127.0.0.1 hm.baidu.com
+127.0.0.1 ma.baidu.com
+127.0.0.1 nsclick.baidu.com
+127.0.0.1 spcode.baidu.com
+127.0.0.1 tk.baidu.com
+127.0.0.1 union.baidu.com
+127.0.0.1 ucstat.baidu.com
+127.0.0.1 utility.baidu.com
+127.0.0.1 utk.baidu.com
+127.0.0.1 focusbaiduafp.allyes.com
+wn.pos.baidu.com
+pos.baidu.com

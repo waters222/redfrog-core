@@ -5,6 +5,70 @@
 # configures the configuration version (we support older styles for
 # backwards compatibility). Please don't change it unless you know what
 # you're doing.
+# require 'yaml'
+# ip_addr=""
+# ip_setting_file = {"ip" => ip_addr}
+# if File.exist? '.vagrant/ip_setting.yaml'
+#   ip_setting_file = YAML.load_file('.vagrant/ip_setting.yaml')
+#   ip_addr = ip_setting_file['ip']
+# end
+
+#static_mapping_script= <<-STATIC_MAPPING_SCRIPT
+
+sudo iptables -A PREROUTING -t nat -p udp --dport 500 -j DNAT --to 10.10.1.8:500
+sudo iptables -A FORWARD -p udp -d 10.10.1.8 --dport 500 -j ACCEPT
+
+sudo iptables -A PREROUTING -t nat -p udp --dport 4500 -j DNAT --to 10.10.1.8:4500
+sudo iptables -A FORWARD -p udp -d 10.10.1.8 --dport 4500 -j ACCEPT
+
+STATIC_MAPPING_SCRIPT
+
+$nat_script = <<-NAT_SCRIPT
+ulimit -Hn 1048576
+ulimit -Sn 1048576
+
+sudo sysctl -w net.ipv4.ip_forward=1
+
+
+
+export INTERFACE_IN=enp1s0
+export INTERFACE_OUT=enp1s0
+
+sudo iptables -t filter --flush INPUT
+sudo iptables -t filter -A INPUT -j ACCEPT
+
+sudo iptables -t filter --flush FORWARD
+sudo iptables -t filter -A FORWARD -i $INTERFACE_IN -o $INTERFACE_OUT -j ACCEPT
+
+sudo iptables -t nat --flush POSTROUTING
+sudo iptables -t nat -A POSTROUTING -o $INTERFACE_OUT   -j MASQUERADE
+
+
+sudo ip rule add fwmark 0x1/0x1 lookup 100
+sudo ip route add local 0.0.0.0/0 dev lo table 100
+
+sudo sysctl -w net.ipv6.conf.all.forwarding=1
+
+sudo ip6tables -t filter --flush INPUT
+sudo ip6tables -t filter -A INPUT -j ACCEPT
+
+sudo ip6tables -t filter --flush FORWARD
+sudo ip6tables -t filter -A FORWARD -i $INTERFACE_IN -o $INTERFACE_OUT -j ACCEPT
+
+sudo ip6tables -t nat --flush POSTROUTING
+sudo ip6tables -t nat -A POSTROUTING -o $INTERFACE_OUT   -j MASQUERADE
+
+sudo ip -6 rule add fwmark 0x1/0x1 lookup 100
+sudo ip -6 route add local ::/128 dev lo table 100
+
+NAT_SCRIPT
+
+
+$gw_scrirpt = <<-GW_SCRIPT
+sudo ip route del default
+sudo ip route add default via 192.168.0.1
+GW_SCRIPT
+
 Vagrant.configure("2") do |config|
   # The most common configuration options are documented and commented below.
   # For a complete reference, please see the online documentation at
@@ -12,7 +76,7 @@ Vagrant.configure("2") do |config|
 
   # Every Vagrant development environment requires a box. You can search for
   # boxes at https://vagrantcloud.com/search.
-  config.vm.box = "ubuntu/bionic64"
+  # config.vm.box = "ubuntu/bionic64"
 
   # Disable automatic box update checking. If you disable this, then
   # boxes will only be checked for updates when the user runs
@@ -67,23 +131,60 @@ Vagrant.configure("2") do |config|
   #   apt-get update
   #   apt-get install -y apache2
   # SHELL
-  config.vm.network "public_network", ip: "10.0.0.50"
+  # config.vm.box = "ubuntu/bionic64"
+  # config.vm.hostname = "gateway"
+  # config.vm.network "private_network", ip: "10.0.2.20"
+  # gateway.vm.network "public_network", ip: "10.0.0.52"
+  # gateway.vm.provision "shell",
+  #   run: "always",
+  #   inline: "route add default gw 10.0.0.1"
+  # gateway.vm.provision "shell",
+  #   run: "always",
+  #   inline: "eval `route -n | awk '{ if ($8 ==\"eth0\" && $2 != \"0.0.0.0\") print \"route del default gw \" $2; }'`"
+  # config.vm.synced_folder "../../../../../", "/home/vagrant/map"
 
-  # default router
-  config.vm.provision "shell",
-    run: "always",
-    inline: "route add default gw 10.0.0.1"
+  config.vm.define "gateway" do |gateway|
 
-  # default router ipv6
-  #config.vm.provision "shell",
-  #  run: "always",
-  #  inline: "route -A inet6 add default gw fc00::1 eth1"
 
-  # delete default gw on eth0
-  config.vm.provision "shell",
-    run: "always",
-    inline: "eval `route -n | awk '{ if ($8 ==\"eth0\" && $2 != \"0.0.0.0\") print \"route del default gw \" $2; }'`"
-
-  # folder
-  config.vm.synced_folder "/home/zhoumingjun/go/", "/home/vagrant/map"
+    # if ip_addr.length == 0
+    #   print "Please enter public ip address for gateway\n"
+    #   ip_addr = STDIN.gets.chomp
+    #   print "Using ip address " + ip_addr + " for public interface\n"      
+    #   ip_setting_file = {'ip'=>ip_addr}
+    #   File.open('.vagrant/ip_setting.yaml', 'w+') {|f| f.write(ip_setting_file.to_yaml) }
+    # end 
+    gateway.vm.box = "ubuntu/bionic64"
+    gateway.vm.hostname = "gateway"
+    gateway.vm.network "private_network", ip: "192.168.0.1" , virtualbox__intnet: "mynet"
+    gateway.vm.network "public_network", ip: "10.0.0.52"
+    gateway.vm.network "forwarded_port", guest: 40000, host: 40000
+    gateway.vm.provision "shell", inline: $nat_script
+    gateway.vm.provider "virtualbox" do |v|
+      v.memory = 512
+      v.cpus = 1
+    end
+    #gateway.vm.network "public_network", ip: ip_addr
+    # gateway.vm.network "public_network", ip: "10.0.0.52"
+    # gateway.vm.provision "shell",
+    #   run: "always",
+    #   inline: "route add default gw 10.0.0.1"
+    # gateway.vm.provision "shell",
+    #   run: "always",
+    #   inline: "eval `route -n | awk '{ if ($8 ==\"eth0\" && $2 != \"0.0.0.0\") print \"route del default gw \" $2; }'`"
+    gateway.vm.synced_folder "../../../../../", "/home/vagrant/map"
+  end
+  config.vm.define "client" do |client|
+    client.vm.box = "ubuntu/bionic64"
+    client.vm.hostname = "client"
+    client.vm.network "private_network", ip: "192.168.0.10", virtualbox__intnet: "mynet"
+    client.vm.provision "shell", inline: $gw_scrirpt
+    client.vm.provider "virtualbox" do |v|
+      v.memory = 512
+      v.cpus = 1
+    end
+    # client.vm.provision "shell",
+    #   run: "always",
+    #   inline: "eval `route -n | awk '{ if ($8 ==\"eth0\" && $2 != \"0.0.0.0\") print \"route del default gw \" $2; }'`"
+    client.vm.synced_folder "../../../../../", "/home/vagrant/map"
+  end
 end

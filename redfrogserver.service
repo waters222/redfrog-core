@@ -1,0 +1,12 @@
+[Unit]
+After=network.target
+
+[Service]
+ExecStart=/root/redfrog/redfrog-server -c /root/redfrog/sample-server.yaml -log /root/redfrog/output.log
+ExecReload=/bin/kill -s HUP $MAINPID
+ExecStop=/bin/kill -s TERM $MAINPID
+Type=simple
+User=root
+
+[Install]
+WantedBy=default.target

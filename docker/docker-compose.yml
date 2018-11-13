@@ -1,0 +1,109 @@
+version: '3'
+networks:
+  client_net:
+    driver: bridge
+#    attachable: true
+    internal: false
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.168.0.0/24
+  gateway_net:
+    driver: bridge
+#    attachable: true
+    internal: false
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.168.1.0/24
+  server_net:
+    driver: bridge
+#    attachable: true
+    internal: false
+    ipam:
+      driver: default
+      config:
+        - subnet: 192.168.2.0/24
+services:
+  client:
+    image: water258/alpine-iptables:latest
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    volumes:
+      - ../bin/test:/app/test:ro
+      - ../bin/batchTest:/app/batchTest:ro
+      - ./scripts/client.sh:/app/client.sh:ro
+      - ./scripts/run_test.sh:/app/run_test.sh:ro
+      - ./scripts/runBatchTest.sh:/app/runBatchTest.sh:ro
+      - ./pac-list.txt:/app/dns.txt:ro
+    dns: 192.168.0.2
+    networks:
+      - client_net
+    command: ["/bin/sh", "/app/client.sh"]
+    depends_on:
+      - gateway
+      - test-server
+
+  gateway:
+    image: water258/alpine-iptables:latest
+    sysctls:
+      - net.ipv4.ip_forward=1
+#      - net.ipv6.conf.all.forwarding=1
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 65535
+        hard: 65535
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    volumes:
+      - ../bin/redfrog-client:/app/redfrog-client:ro
+      - ./gateway-config.yaml:/app/gateway-config.yaml:ro
+      - ./pac-list.txt:/app/pac-list.txt:ro
+      - ./black.txt:/app/black.txt:ro
+      - ./white.txt:/app/white.txt:ro
+      - ./scripts/gateway.sh:/app/gateway.sh:ro
+    networks:
+      client_net:
+        ipv4_address: 192.168.0.2
+      gateway_net:
+    command: ["/bin/sh", "/app/gateway.sh"]
+    depends_on:
+      - proxy-server
+
+  proxy-server:
+    image: water258/alpine-iptables:latest
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 65535
+        hard: 65535
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    volumes:
+    - ../bin/redfrog-server:/app/redfrog-server:ro
+    - ./scripts/proxy-server.sh:/app/proxy-server.sh:ro
+    - ./proxy-server-config.yaml:/app/proxy-server-config.yaml:ro
+    command: ["/bin/sh", "/app/proxy-server.sh"]
+    networks:
+      gateway_net:
+        ipv4_address: 192.168.1.2
+      server_net:
+
+  test-server:
+    image: water258/alpine-iptables:latest
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 65535
+        hard: 65535
+    volumes:
+      - ../bin/test:/app/test:ro
+      - ./scripts/server.sh:/app/server.sh:ro
+    networks:
+      - server_net
+    command: ["/bin/sh", "/app/server.sh"]
+

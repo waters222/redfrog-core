@@ -1,0 +1,6 @@
+test-server
+www.baidu.com
+www.sina.com.cn
+www.taobao.com
+www.tmall.com
+www.qq.com

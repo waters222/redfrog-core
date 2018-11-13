@@ -1,0 +1,1 @@
+Run  `sudo modprobe ip6table_filter` under linux to allow ip6tables working

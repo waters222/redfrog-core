@@ -2,35 +2,39 @@ package main
 
 import (
 	"flag"
-	"os"
-	"os/signal"
-	"syscall"
-	"math/rand"
-	"time"
-	"go.uber.org/zap"
-	"github.com/weishi258/redfrog-core/log"
+	"fmt"
+	"github.com/pkg/errors"
 	. "github.com/weishi258/redfrog-core/config"
-	"github.com/weishi258/redfrog-core/routing"
 	"github.com/weishi258/redfrog-core/dns_proxy"
+	"github.com/weishi258/redfrog-core/log"
 	"github.com/weishi258/redfrog-core/pac"
-	)
+	"github.com/weishi258/redfrog-core/proxy_client"
+	"github.com/weishi258/redfrog-core/routing"
+	"go.uber.org/zap"
+	"math/rand"
+	"os"
+	"os/exec"
+	"os/signal"
+	"strconv"
+	"syscall"
+	"time"
+)
+
+const DNS_MOCK_TIMEOUT_MUTIPLIER = 10
 
 var Version string
+var RevInfo string
 var BuildTime string
 
+var serviceStopSignal chan bool
+var appRunStatus chan bool
 var sigChan chan os.Signal
 
-func main(){
+const (
+	appName = "RedFrog Client"
+)
 
-	sigChan = make(chan os.Signal, 5)
-	done := make(chan bool)
-
-	signal.Notify(sigChan,
-		syscall.SIGHUP,
-		syscall.SIGKILL,
-		syscall.SIGQUIT,
-		syscall.SIGTERM,
-		syscall.SIGINT)
+func main() {
 
 	rand.Seed(time.Now().UnixNano())
 
@@ -38,7 +42,8 @@ func main(){
 	var configFile string
 	var logLevel string
 	var bProduction bool
-
+	var workingDir string
+	var logFile string
 	var err error
 
 	// parse parameters
@@ -47,90 +52,229 @@ func main(){
 	flag.StringVar(&configFile, "c", "server_config.json", "server config file")
 	flag.StringVar(&logLevel, "l", "info", "log level")
 	flag.BoolVar(&bProduction, "production", false, "is production mode")
+	flag.StringVar(&workingDir, "d", "./", "working directory")
+	flag.StringVar(&logFile, "log", "", "log output file path")
 	flag.Parse()
 
-	defer func(){
-		if err != nil{
+	defer func() {
+		if err != nil {
 			os.Exit(1)
-		}else{
+		} else {
 			os.Exit(0)
 		}
 	}()
 
 	// init logger
-	logger := log.InitLogger(logLevel, bProduction)
+	logger := log.InitLogger(logFile, logLevel, bProduction)
 
 	// print version
-	if printVer{
-		logger.Info("User Manager Server",
-			zap.String("Version", Version),
-			zap.String("BuildTime", BuildTime))
+	if printVer {
+		if Version != ""{
+			logger.Info(appName,
+				zap.String("Version", Version),
+				zap.String("Rev", RevInfo),
+				zap.String("BuildTime", BuildTime))
+		}else{
+			logger.Info(appName,
+				zap.String("Version", Version),
+				zap.String("Rev", RevInfo),
+				zap.String("BuildTime", BuildTime))
+		}
+
 		os.Exit(0)
 	}
 
-	defer func(){
+	defer func() {
 		logger.Sync()
-		logger.Info("RedFrog is stopped")
-		if err != nil{
+		logger.Info(fmt.Sprintf("%s is exit", appName))
+		if err != nil {
 			os.Exit(1)
-		}else{
+		} else {
 			os.Exit(0)
 		}
 	}()
+	SetWorkingDir(workingDir)
 
+	serviceStopSignal = make(chan bool)
+	appRunStatus = make(chan bool)
+	sigChan = make(chan os.Signal, 1)
+
+	signal.Notify(sigChan,
+		syscall.SIGTERM,
+		syscall.SIGINT)
+
+	go StartService(configFile)
+
+	runStatus := <-appRunStatus
+	if !runStatus {
+		os.Exit(1)
+	}
+
+	sig := <-sigChan
+	logger.Info(fmt.Sprintf("%s caught signal for exit", appName), zap.Any("signal", sig))
+	serviceStopSignal <- true
+	<-appRunStatus
+	return
+
+}
+func StartService(configFile string) {
+	logger := log.GetLogger()
+	status := false
+	defer func() {
+		appRunStatus <- status
+	}()
 	// parse config
+	var err error
 	var config Config
-	if config, err = ParseConfig(configFile); err != nil{
+	if config, err = ParseClientConfig(configFile); err != nil {
 		logger.Error("Read config file failed", zap.String("file", configFile), zap.String("error", err.Error()))
 		return
-	}else{
+	} else {
 		logger.Info("Read config file successful", zap.String("file", configFile))
 	}
 
-
-
+	if err = addTProxyRoutingIPv4(config.PacketMask, strconv.Itoa(config.RoutingTable)); err != nil {
+		logger.Error("Add TProxy ipv4 route failed", zap.String("error", err.Error()))
+		return
+	}
+	if err = addTProxyRoutingIPv6(config.PacketMask, strconv.Itoa(config.RoutingTable)); err != nil {
+		logger.Error("Add TProxy ipv6 route failed", zap.String("error", err.Error()))
+		return
+	}
 	// init routing mgr
 	var routingMgr *routing.RoutingMgr
-	if routingMgr, err = routing.StartRoutingMgr(); err != nil{
+	if routingMgr, err = routing.StartRoutingMgr(config.ListenPort, config.PacketMask, config.RoutingTable, config.IgnoreIP, config.Interface, config.IPSet); err != nil {
 		logger.Error("Init routing manager failed", zap.String("error", err.Error()))
 		return
 	}
 	defer routingMgr.Stop()
 
-
 	// init pac list
 	var pacListMgr *pac.PacListMgr
-	if pacListMgr, err = pac.StartPacListMgr(routingMgr); err != nil{
+	if pacListMgr, err = pac.StartPacListMgr(routingMgr); err != nil {
 		logger.Error("Start pac list manager failed", zap.String("error", err.Error()))
 	}
 	defer pacListMgr.Stop()
-	pacListMgr.ReadPacList(config.Shadowsocks.PacList)
+	pacListMgr.ReadPacList(config.PacList)
 
+	var proxyClient *proxy_client.ProxyClient
+	if proxyClient, err = proxy_client.StartProxyClient(config.Dns.Timeout*DNS_MOCK_TIMEOUT_MUTIPLIER, config.Shadowsocks, fmt.Sprintf("0.0.0.0:%d", config.ListenPort)); err != nil {
+		logger.Error("Start proxy client failed", zap.String("error", err.Error()))
+		return
+	}
+	defer proxyClient.Stop()
 
 	// Start Dns Server
 
 	var dnsServer *dns_proxy.DnsServer
-	if dnsServer, err = dns_proxy.StartDnsServer(config.Dns, pacListMgr, routingMgr); err != nil{
+	if dnsServer, err = dns_proxy.StartDnsServer(config.Dns, pacListMgr, routingMgr, proxyClient); err != nil {
 		logger.Error("Start dns_proxy server failed", zap.String("error", err.Error()))
 		return
 	}
 	defer dnsServer.Stop()
 
+	status = true
 
+	logger.Info(fmt.Sprintf("%s service is up and running", appName))
 
+	appRunStatus <- true
 
+	// reading reload signal
+	reloadSignal := make(chan os.Signal, 1)
+	signal.Notify(reloadSignal,
+		syscall.SIGHUP)
+	for {
+		select {
+		case <-reloadSignal:
+			logger.Info("Reload configs")
 
+			var newConfig Config
+			if newConfig, err = ParseClientConfig(configFile); err != nil {
+				logger.Error("Read config file failed", zap.String("file", configFile), zap.String("error", err.Error()))
+				continue
+			}
+			logger.Info("Read config file successful", zap.String("file", configFile))
+			pacListMgr.ReloadPacList(newConfig.PacList)
 
+			dnsServer.Reload(newConfig.Dns)
 
+			if err = proxyClient.ReloadBackend(config.Dns.Timeout*DNS_MOCK_TIMEOUT_MUTIPLIER, newConfig.Shadowsocks); err != nil {
+				logger.Error("Reload backend failed", zap.String("error", err.Error()))
+			} else {
+				logger.Info("Reload backend successful")
+			}
 
-	logger.Info("RefFrog is up and running")
-	go func() {
-		sig := <-sigChan
+			//pacListMgr.ReadPacList()
+		case <-serviceStopSignal:
+			logger.Info(fmt.Sprintf("%s service is stopped", appName))
+			return
+		}
+	}
 
-		logger.Debug("RefFrog caught signal for exit",
-			zap.Any("signal", sig))
-		done <- true
-	}()
-	<-done
+}
 
+func addTProxyRoutingIPv4(mark string, table string) (err error) {
+	cmd := exec.Command("ip", "rule", "list", "fwmark", mark, "lookup", table)
+	var response []byte
+	if response, err = cmd.Output(); err != nil {
+		err = errors.Wrap(err, "list ipv4 rule failed")
+		return
+	}
+	if len(response) == 0 {
+		// need to add new
+		cmd = exec.Command("ip", "rule", "add", "fwmark", mark, "lookup", table)
+		if err = cmd.Run(); err != nil {
+			err = errors.Wrap(err, "add ipv4 routing rule failed")
+			return
+		}
+	}
+
+	cmd = exec.Command("ip", "route", "list", "0.0.0.0/0", "dev", "lo", "table", table)
+	if response, err = cmd.Output(); err != nil {
+		err = errors.Wrap(err, "list ipv4 routing route failed")
+		return
+	}
+	if len(response) == 0 {
+		// need to add new
+		cmd = exec.Command("ip", "route", "replace", "local", "0.0.0.0/0", "dev", "lo", "table", table)
+		if err = cmd.Run(); err != nil {
+			err = errors.Wrap(err, "add ipv4 routing route failed")
+			return
+		}
+	}
+
+	return
+}
+
+func addTProxyRoutingIPv6(mark string, table string) (err error) {
+	cmd := exec.Command("ip", "-6", "rule", "list", "fwmark", mark, "lookup", table)
+	var response []byte
+	if response, err = cmd.Output(); err != nil {
+		err = errors.Wrap(err, "list ipv6 rule failed")
+		return
+	}
+	if len(response) == 0 {
+		// need to add new
+		cmd = exec.Command("ip", "-6", "rule", "add", "fwmark", mark, "lookup", table)
+		if err = cmd.Run(); err != nil {
+			err = errors.Wrap(err, "add ipv6 routing rule failed")
+			return
+		}
+	}
+
+	cmd = exec.Command("ip", "-6", "route", "list", "::/128", "dev", "lo", "table", table)
+	if response, err = cmd.Output(); err != nil {
+		err = errors.Wrap(err, "list ipv6 routing route failed")
+		return
+	}
+	if len(response) == 0 {
+		// need to add new
+		cmd = exec.Command("ip", "-6", "route", "replace", "local", "::/128", "dev", "lo", "table", table)
+		if err = cmd.Run(); err != nil {
+			err = errors.Wrap(err, "add ipv6 routing route failed")
+			return
+		}
+	}
+
+	return
 }
