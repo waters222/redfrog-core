@@ -65,8 +65,8 @@ type udpProxyEntry struct {
 	timeout   time.Duration
 }
 
-func createProxyEntry(dstP net.PacketConn, dstT net.Conn, dstK *smux.Stream, dstAddr *net.UDPAddr, proxyAddr *net.UDPAddr, timeout time.Duration) (*udpProxyEntry, error) {
-	addr, err := network.ConvertShadowSocksAddr(dstAddr.String(), true)
+func createProxyEntry(isUDPOverTcp bool, dstP net.PacketConn, dstT net.Conn, dstK *smux.Stream, dstAddr *net.UDPAddr, proxyAddr *net.UDPAddr, timeout time.Duration) (*udpProxyEntry, error) {
+	addr, err := network.ConvertShadowSocksAddr(dstAddr.String(), isUDPOverTcp)
 	if err != nil {
 		return nil, err
 	}
@@ -76,15 +76,15 @@ func createProxyEntry(dstP net.PacketConn, dstT net.Conn, dstK *smux.Stream, dst
 }
 
 func createUDPProxyEntry(dst net.PacketConn, dstAddr *net.UDPAddr, proxyAddr *net.UDPAddr, timeout time.Duration) (*udpProxyEntry, error) {
-	return createProxyEntry(dst, nil, nil, dstAddr, proxyAddr, timeout)
+	return createProxyEntry(false, dst, nil, nil, dstAddr, proxyAddr, timeout)
 }
 
 func createUDPOverTCPProxyEntry(dst net.Conn, dstAddr *net.UDPAddr, proxyAddr *net.UDPAddr, timeout time.Duration) (*udpProxyEntry, error) {
-	return createProxyEntry(nil, dst, nil, dstAddr, proxyAddr, timeout)
+	return createProxyEntry(true, nil, dst, nil, dstAddr, proxyAddr, timeout)
 }
 
 func createUDPOverKCPProxyEntry(dst *smux.Stream, dstAddr *net.UDPAddr, proxyAddr *net.UDPAddr, timeout time.Duration) (*udpProxyEntry, error) {
-	return createProxyEntry(nil, nil, dst, dstAddr, proxyAddr, timeout)
+	return createProxyEntry(true, nil, nil, dst, dstAddr, proxyAddr, timeout)
 }
 
 type udpNatMap struct {
@@ -419,7 +419,9 @@ func (c *ProxyClient) Stop() {
 
 func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr *net.UDPAddr, data []byte, dataLen int) error {
 	logger := log.GetLogger()
-
+	if dataLen > common.UDP_BUFFER_SIZE{
+		return errors.New(fmt.Sprintf("udp packet too big, so ignore: %d", dataLen))
+	}
 	c.udpNatMap_.Lock()
 	udpProxy := c.udpNatMap_.Get(udpKey)
 	if udpProxy == nil {
@@ -559,16 +561,17 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 						}
 						return
 					}
-					writeBuffer := make([]byte, n)
-					copy(writeBuffer, buffer[:n])
-					if srcAddr == nil {
-						// its dns so deal accordingly
-						c.processDNSResponse(writeBuffer)
-					} else {
-						// regular udp proxy
-						c.udpBackend_.WriteBackUDPPayload(c, srcAddr, dstAddr, writeBuffer, udpProxy.timeout)
+					if n > 0{
+						writeBuffer := make([]byte, n)
+						copy(writeBuffer, buffer[:n])
+						if srcAddr == nil {
+							// its dns so deal accordingly
+							c.processDNSResponse(writeBuffer)
+						} else {
+							// regular udp proxy
+							c.udpBackend_.WriteBackUDPPayload(c, srcAddr, dstAddr, writeBuffer, udpProxy.timeout)
+						}
 					}
-
 				}
 			}()
 		}

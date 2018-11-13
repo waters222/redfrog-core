@@ -119,6 +119,9 @@ func ReadUdpOverTcp(r io.Reader, buffer []byte) (int, error) {
 	packetSize := int(binary.BigEndian.Uint16(lenBuffer))
 
 	if packetSize <= len(buffer) {
+		if packetSize <= 0{
+			return 0, nil
+		}
 		n, err := io.ReadFull(r, buffer[:packetSize])
 		//log.GetLogger().Debug("read udp over tcp buffer successful", zap.Int("size", packetSize))
 		return n, err
@@ -130,6 +133,9 @@ func ReadUdpOverTcp(r io.Reader, buffer []byte) (int, error) {
 
 func WriteUdpOverTcp(w io.Writer, buffer []byte) (int, error) {
 	packetSize := uint16(len(buffer))
+	if packetSize <= 0{
+		return 0, nil
+	}
 	b := make([]byte, 2)
 	binary.BigEndian.PutUint16(b, packetSize)
 

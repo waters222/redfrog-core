@@ -176,10 +176,13 @@ func (c *KCPServer) handleUDPOverTCP(conn *smux.Stream, dstAddrBytes socks.Addr)
 			}
 			return
 		}
-		if _, err = remoteConn.Write(buffer[:packetSize]); err != nil {
-			logger.Error("kcp write udp to remote failed", zap.String("addr", dstAddr.String()), zap.String("error", err.Error()))
-			return
+		if packetSize > 0 {
+			if _, err = remoteConn.Write(buffer[:packetSize]); err != nil {
+				logger.Error("kcp write udp to remote failed", zap.String("addr", dstAddr.String()), zap.String("error", err.Error()))
+				return
+			}
 		}
+
 		remoteConn.SetReadDeadline(time.Now().Add(c.udpTimeout))
 	}
 
