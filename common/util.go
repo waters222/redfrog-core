@@ -33,8 +33,7 @@ func GenerateDomainStubs(domain string) []string {
 		stubs = segs
 	}
 
-	len := len(stubs)
-	for i := len - 2; i >= 0; i-- {
+	for i := len(stubs) - 2; i >= 0; i-- {
 		stubs[i] = fmt.Sprintf("%s.%s", stubs[i], stubs[i+1])
 	}
 	return stubs
@@ -119,11 +118,11 @@ func ReadUdpOverTcp(r io.Reader, buffer []byte) (int, error) {
 	}
 	packetSize := int(binary.BigEndian.Uint16(lenBuffer))
 
-	if packetSize <= len(buffer){
-		n, err :=  io.ReadFull(r, buffer[:packetSize])
+	if packetSize <= len(buffer) {
+		n, err := io.ReadFull(r, buffer[:packetSize])
 		//log.GetLogger().Debug("read udp over tcp buffer successful", zap.Int("size", packetSize))
 		return n, err
-	}else{
+	} else {
 		return 0, errors.New(fmt.Sprintf("udp packet too big: %d", packetSize))
 	}
 
@@ -134,7 +133,7 @@ func WriteUdpOverTcp(w io.Writer, buffer []byte) (int, error) {
 	b := make([]byte, 2)
 	binary.BigEndian.PutUint16(b, packetSize)
 
-	if _, err := w.Write(b); err != nil{
+	if _, err := w.Write(b); err != nil {
 		return 0, err
 	}
 

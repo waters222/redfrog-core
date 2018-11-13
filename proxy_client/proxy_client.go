@@ -470,7 +470,7 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 					//logger.Debug("Read from remote", zap.Int("size", n))
 					// now lets write back
 					headerLen := len(udpProxy.header_)
-					writeBuffer := make([]byte, n - headerLen)
+					writeBuffer := make([]byte, n-headerLen)
 					copy(writeBuffer, buffer[headerLen:n])
 					if n > headerLen {
 						if srcAddr == nil {
@@ -502,9 +502,9 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 				defer func() {
 					if srcAddr == nil {
 						if udpProxy.dstKcp_ != nil {
-							logger.Debug("dns relay entry quit",  zap.String("dst", dstAddr.String()))
+							logger.Debug("dns relay entry quit", zap.String("dst", dstAddr.String()))
 						} else {
-							logger.Debug("dns relay entry quit",  zap.String("dst", dstAddr.String()))
+							logger.Debug("dns relay entry quit", zap.String("dst", dstAddr.String()))
 						}
 
 					} else {

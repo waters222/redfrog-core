@@ -152,7 +152,7 @@ func (c *ProxyServer) startTCPAccept() {
 func (c *ProxyServer) handleUDPOverTCP(conn net.Conn, dstAddrBytes socks.Addr) {
 	logger := log.GetLogger()
 	dstAddr, err := net.ResolveUDPAddr("udp", common.AddrToString(dstAddrBytes))
-	if err != nil{
+	if err != nil {
 		logger.Error("tcp resolve udp address failed", zap.String("error", err.Error()))
 		return
 	}
@@ -197,7 +197,7 @@ func (c *ProxyServer) handleUDPOverTCP(conn net.Conn, dstAddrBytes socks.Addr) {
 	for err == nil {
 		buffer = buffer[:cap(buffer)]
 		if packetSize, err = common.ReadUdpOverTcp(conn, buffer); err != nil {
-			if err != io.EOF{
+			if err != io.EOF {
 				if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
 					logger.Error("read UDP over TCP failed", zap.String("addr", dstAddr.String()), zap.Int("packetSize", packetSize), zap.String("error", err.Error()))
 				}

@@ -333,18 +333,18 @@ func ConvertShadowSocksAddr(addr string, isUDP bool) ([]byte, error) {
 	}
 	if ipv4 := ip.To4(); ipv4 != nil {
 		ret = make([]byte, 1+net.IPv4len+2)
-		if isUDP{
+		if isUDP {
 			ret[0] = common.AtTypeUdpIpv4
-		}else{
+		} else {
 			ret[0] = socks.AtypIPv4
 		}
 
 		copy(ret[1:], ipv4)
 	} else {
 		ret = make([]byte, 1+net.IPv6len+2)
-		if isUDP{
+		if isUDP {
 			ret[0] = common.AtTypeUdpIpv6
-		}else{
+		} else {
 			ret[0] = socks.AtypIPv6
 		}
 

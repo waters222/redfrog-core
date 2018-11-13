@@ -123,8 +123,8 @@ func (c *KCPServer) handleConnection(conn io.ReadWriteCloser) {
 func (c *KCPServer) handleUDPOverTCP(conn *smux.Stream, dstAddrBytes socks.Addr) {
 	logger := log.GetLogger()
 	dstAddr, err := net.ResolveUDPAddr("udp", common.AddrToString(dstAddrBytes))
-	if err != nil{
-		logger.Error("kcp resolve udp address failed",  zap.String("error", err.Error()))
+	if err != nil {
+		logger.Error("kcp resolve udp address failed", zap.String("error", err.Error()))
 		return
 	}
 	remoteConn, err := net.DialUDP("udp", nil, dstAddr)
@@ -169,7 +169,7 @@ func (c *KCPServer) handleUDPOverTCP(conn *smux.Stream, dstAddrBytes socks.Addr)
 	for err == nil {
 		buffer = buffer[:cap(buffer)]
 		if packetSize, err = common.ReadUdpOverTcp(conn, buffer); err != nil {
-			if err != io.EOF{
+			if err != io.EOF {
 				if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
 					logger.Error("Read UDP over kcp failed", zap.String("addr", dstAddr.String()), zap.Int("packetSize", packetSize), zap.String("error", err.Error()))
 				}

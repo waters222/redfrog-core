@@ -221,7 +221,7 @@ func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEn
 				if entry, err = createUDPOverKCPProxyEntry(kcpConn, dstAddr, c.udpAddr, c.udpTimeout_); err == nil {
 					log.GetLogger().Debug("create udp over kcp relay entry successful", zap.String("dst", dstAddr.String()))
 					return
-				}else{
+				} else {
 					kcpConn.Close()
 					err = errors.Wrap(err, "Create udp over tcp proxy entry failed")
 				}
@@ -238,7 +238,6 @@ func (c *proxyBackend) GetUDPRelayEntry(dstAddr *net.UDPAddr) (entry *udpProxyEn
 			dst.Close()
 			err = errors.Wrap(err, "Create udp over tcp proxy entry failed")
 		}
-
 
 	} else {
 		var conn net.PacketConn
