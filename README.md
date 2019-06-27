@@ -78,7 +78,7 @@ servers:
     tcp-timeout: 120
     udp-timeout: 60
     crypt: "AEAD_CHACHA20_POLY1305"
-    Password: "123321A"
+    Password: "MUST CHANGE THIS"
     kcptun:
       enable: true
       listen-addr: "0.0.0.0:8420"
@@ -100,7 +100,7 @@ servers:
     tcp-timeout: 120
     udp-timeout: 60
     crypt: "AEAD_CHACHA20_POLY1305"
-    Password: "123321A"
+    Password: "MUST CHANGE THIS"
     kcptun:
       enable: true
       listen-addr: "0.0.0.0:8421"
@@ -124,6 +124,7 @@ servers:
 it start the proxy client with dns filter on
 1. Add multiple pac lists to the tag `pac-list`
 2. Add multiple proxy connection (it will use round robin) to remote server with kcptun enabled
+3. Must change the password field for security reason
 ```yaml
 packet-mask: "0x1/0x1"
 routing-table: 100
@@ -149,7 +150,7 @@ shadowsocks:
   - enable: true
     remote-server: "192.168.1.2:8420"
     crypt: "AEAD_CHACHA20_POLY1305"
-    Password: "123321A"
+    Password: "MUST CHANGE THIS"
     tcp-timeout: 20
     udp-timeout: 10
     udp-over-tcp: true
@@ -173,7 +174,7 @@ shadowsocks:
   - enable: true
     remote-server: "192.168.1.2:8421"
     crypt: "AEAD_CHACHA20_POLY1305"
-    Password: "123321A"
+    Password: "MUST CHANGE THIS"
     tcp-timeout: 20
     udp-timeout: 10
     udp-over-tcp: true
@@ -200,3 +201,4 @@ shadowsocks:
 The client is gateway level rule based proxy all you need to do is:
 1. config the local router to use the client device ip as the new gateway and DNS server
 2. config each device to use the client device as gateway and DNS server
+3. Must change the password field for security reason

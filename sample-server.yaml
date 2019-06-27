@@ -3,7 +3,7 @@ servers:
     tcp-timeout: 120
     udp-timeout: 60
     crypt: "AEAD_CHACHA20_POLY1305"
-    Password: "123321A"
+    Password: "MUST CHANGE THIS"
     kcptun:
       enable: true
       listen-addr: "0.0.0.0:8420"
@@ -25,7 +25,7 @@ servers:
     tcp-timeout: 120
     udp-timeout: 60
     crypt: "AEAD_CHACHA20_POLY1305"
-    Password: "123321A"
+    Password: "MUST CHANGE THIS"
     kcptun:
       enable: true
       listen-addr: "0.0.0.0:8421"

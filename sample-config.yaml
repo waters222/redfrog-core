@@ -22,7 +22,7 @@ shadowsocks:
   - enable: true
     remote-server: "192.168.1.2:8420"
     crypt: "AEAD_CHACHA20_POLY1305"
-    Password: "123321A"
+    Password: "MUST CHANGE THIS"
     tcp-timeout: 20
     udp-timeout: 10
     udp-over-tcp: true
@@ -46,7 +46,7 @@ shadowsocks:
   - enable: true
     remote-server: "192.168.1.2:8421"
     crypt: "AEAD_CHACHA20_POLY1305"
-    Password: "123321A"
+    Password: "MUST CHANGE THIS"
     tcp-timeout: 20
     udp-timeout: 10
     udp-over-tcp: true
