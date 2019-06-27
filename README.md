@@ -3,7 +3,7 @@
 Gateway level shadowsocks client/server for passing through firewall and censorship.
 ____
 
-#1. How to build
+# 1.How to build
 ```bash
 ## clone repo
 git clone https://github.com/weishi258/redfrog-core
@@ -13,7 +13,7 @@ dep ensure -v
 ./build.sh
 ```
 
-#2. Deploy server
+# 2. Deploy server
 1. upload build server binary (e.g redfrog-server) to remote server
 
 2. simple run the server with command
@@ -43,7 +43,7 @@ c. start service: `systemctl start redfrogserver`
   
 d. enable service for auto start: `systemctl enable redfrogserver`
 
-#3. Deploy client
+# 3. Deploy client
 1. upload client binary to local gateway server
   
 2. Simple run the client with command
@@ -70,7 +70,7 @@ WantedBy=default.target
 b. start service: `systemctl start redfrog`  
 c. enable service: `systemctl enable redfrog`
 
-#4 Server config explain
+# 4. Server config explain
 this config start the proxy server to listen on two ports: 8420 and 8421 with kcptun support
 ```yaml
 servers:
@@ -120,7 +120,7 @@ servers:
       sock-buf : 4194304
 ```
 
-#5 Client config explain
+# 5. Client config explain
 it start the proxy client with dns filter on
 1. Add multiple pac lists to the tag `pac-list`
 2. Add multiple proxy connection (it will use round robin) to remote server with kcptun enabled
@@ -197,7 +197,7 @@ shadowsocks:
       sock-buf : 4194304
 ```
 
-#6 How to use it for local network devices
+# 6. How to use it for local network devices
 The client is gateway level rule based proxy all you need to do is:
 1. config the local router to use the client device ip as the new gateway and DNS server
 2. config each device to use the client device as gateway and DNS server
