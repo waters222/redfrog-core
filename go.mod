@@ -7,7 +7,6 @@ require (
 	github.com/aead/chacha20 v0.0.0-20180709150244-8b13a72661da // indirect
 	github.com/coreos/go-semver v0.3.0
 	github.com/golang/snappy v0.0.1
-	github.com/klauspost/crc32 v1.2.0 // indirect
 	github.com/miekg/dns v1.1.22
 	github.com/onsi/ginkgo v1.10.3 // indirect
 	github.com/onsi/gomega v1.7.1 // indirect
