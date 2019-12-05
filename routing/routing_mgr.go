@@ -139,7 +139,7 @@ func StartRoutingMgr(port int, mark string, routingTableNum int, ignoreIP []stri
 		return
 	}
 	logger.Info("IPTables v6 successful created")
-	logger.Info("Init routing manager successful")
+	logger.Info("Start routing manager successful")
 	return
 }
 

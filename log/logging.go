@@ -44,7 +44,7 @@ func InitLogger(logFile string, logLevel string, bJson bool) *zap.Logger {
 
 	var err error
 	if logger, err = cfg.Build(); err != nil {
-		fmt.Println(fmt.Sprintf("Init zap logger failed: %s", err.Error()))
+		fmt.Println(fmt.Sprintf("Start zap logger failed: %s", err.Error()))
 		return nil
 	}
 

@@ -12,7 +12,6 @@ import (
 	"github.com/xtaci/smux"
 	"go.uber.org/zap"
 	"io"
-	"math"
 	"math/rand"
 	"net"
 	"sync"
@@ -23,11 +22,11 @@ import (
 //	DNS_ADDR_MOCK_TIMEOUT = 60
 //)
 
-type dnsProxyResolver struct {
-	dnsIdQueue     chan uint16
-	dnsQueryMap    map[uint16]chan<- *dns.Msg
-	dnsQueryMapMux sync.RWMutex
-}
+//type DnsSyncResolver struct {
+//	dnsIdQueue     chan uint16
+//	dnsQueryMap    map[uint16]chan<- *dns.Msg
+//	dnsQueryMapMux sync.RWMutex
+//}
 
 type ProxyClient struct {
 	backends_  []*proxyBackend
@@ -46,7 +45,7 @@ type ProxyClient struct {
 	dnsServer      common.DNSServerInterface
 	dnsMockTimeout int
 
-	dnsProxy dnsProxyResolver
+	dnsSyncResolver common.DnsSyncResolver
 }
 
 // udp relay
@@ -140,11 +139,13 @@ func StartProxyClient(dnsMockTimeout int, config config.ShadowsocksConfig, liste
 	ret.udpNatMap_ = &udpNatMap{entries: make(map[string]*udpProxyEntry)}
 
 	// for dns proxy
-	ret.dnsProxy.dnsQueryMap = make(map[uint16]chan<- *dns.Msg)
-	ret.dnsProxy.dnsIdQueue = make(chan uint16, math.MaxUint16)
-	for i := 1; i < math.MaxUint16; i++ {
-		ret.dnsProxy.dnsIdQueue <- uint16(i)
-	}
+	//ret.dnsSyncResolver.dnsQueryMap = make(map[uint16]chan<- *dns.Msg)
+	//ret.dnsSyncResolver.dnsIdQueue = make(chan uint16, math.MaxUint16)
+	//for i := 1; i < math.MaxUint16; i++ {
+	//	ret.dnsSyncResolver.dnsIdQueue <- uint16(i)
+	//}
+	ret.dnsSyncResolver.Start()
+
 	go ret.startListenUDP()
 
 	logger.Info("ProxyClient start successful", zap.String("addr", listenAddr))
@@ -396,11 +397,7 @@ func (c *ProxyClient) Stop() {
 	for _, backend := range c.backends_ {
 		backend.Stop()
 	}
-
-	for _, v := range c.dnsProxy.dnsQueryMap {
-		// send nil signal to close
-		v <- nil
-	}
+	c.dnsSyncResolver.Stop()
 
 	c.udpNatMap_.Lock()
 	defer c.udpNatMap_.Unlock()
@@ -478,7 +475,8 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 					if n > headerLen {
 						if srcAddr == nil {
 							// its dns so deal accordingly
-							c.processDNSResponse(writeBuffer)
+							c.dnsSyncResolver.ProcessDnsResponse(logger, writeBuffer)
+							//c.processDNSResponse(writeBuffer)
 						} else {
 							// regular udp proxy
 							c.udpBackend_.WriteBackUDPPayload(c, srcAddr, dstAddr, writeBuffer, udpProxy.timeout)
@@ -564,7 +562,7 @@ func (c *ProxyClient) relayUDPData(udpKey string, srcAddr *net.UDPAddr, dstAddr 
 						copy(writeBuffer, buffer[:n])
 						if srcAddr == nil {
 							// its dns so deal accordingly
-							c.processDNSResponse(writeBuffer)
+							c.dnsSyncResolver.ProcessDnsResponse(logger, writeBuffer)
 						} else {
 							// regular udp proxy
 							c.udpBackend_.WriteBackUDPPayload(c, srcAddr, dstAddr, writeBuffer, udpProxy.timeout)
@@ -641,28 +639,28 @@ func (c *ProxyClient) SetDNSProcessor(server common.DNSServerInterface) {
 	c.dnsServer = server
 }
 
-func (c *ProxyClient) processDNSResponse(data []byte) {
-	logger := log.GetLogger()
-	dnsId := binary.BigEndian.Uint16(data)
-	// now we unpack
-	resDns := new(dns.Msg)
-	if err := resDns.Unpack(data); err != nil {
-		logger.Info("DNS unpack for proxy resolver failed", zap.String("error", err.Error()))
-		return
-	}
-
-	c.dnsProxy.dnsQueryMapMux.Lock()
-	// if id is exists then send signal for notification and delete this entry
-	if sig, ok := c.dnsProxy.dnsQueryMap[dnsId]; ok {
-		delete(c.dnsProxy.dnsQueryMap, dnsId)
-		c.dnsProxy.dnsQueryMapMux.Unlock()
-		// put id back for re-use
-		c.dnsProxy.dnsIdQueue <- dnsId
-		sig <- resDns
-	} else {
-		c.dnsProxy.dnsQueryMapMux.Unlock()
-	}
-}
+//func (c *ProxyClient) processDNSResponse(data []byte) {
+//	logger := log.GetLogger()
+//	dnsId := binary.BigEndian.Uint16(data)
+//	// now we unpack
+//	resDns := new(dns.Msg)
+//	if err := resDns.Unpack(data); err != nil {
+//		logger.Info("DNS unpack for proxy resolver failed", zap.String("error", err.Error()))
+//		return
+//	}
+//
+//	c.dnsSyncResolver.dnsQueryMapMux.Lock()
+//	// if id is exists then send signal for notification and delete this entry
+//	if sig, ok := c.dnsSyncResolver.dnsQueryMap[dnsId]; ok {
+//		delete(c.dnsSyncResolver.dnsQueryMap, dnsId)
+//		c.dnsSyncResolver.dnsQueryMapMux.Unlock()
+//		// put id back for re-use
+//		c.dnsSyncResolver.dnsIdQueue <- dnsId
+//		sig <- resDns
+//	} else {
+//		c.dnsSyncResolver.dnsQueryMapMux.Unlock()
+//	}
+//}
 
 func (c *ProxyClient) ExchangeDNS(dnsAddr string, data []byte, timeout time.Duration) (response *dns.Msg, err error) {
 	dstAddr, err := net.ResolveUDPAddr("udp", dnsAddr)
@@ -671,36 +669,40 @@ func (c *ProxyClient) ExchangeDNS(dnsAddr string, data []byte, timeout time.Dura
 	}
 
 	//logger := log.GetLogger()
-	dnsId := <-c.dnsProxy.dnsIdQueue
+	dnsId := c.dnsSyncResolver.GetDnsId()
+	//dnsId := <-c.dnsSyncResolver.dnsIdQueue
 	// replace original id with new id
 	binary.BigEndian.PutUint16(data, dnsId)
 
 	err = c.relayUDPData(computeDnsKey(dnsAddr), nil, dstAddr, data, len(data))
 	if err != nil {
+		// recycle id
+		c.dnsSyncResolver.PutDnsId(dnsId)
 		return nil, err
 	}
-	sig := make(chan *dns.Msg)
-	c.dnsProxy.dnsQueryMapMux.Lock()
-	c.dnsProxy.dnsQueryMap[dnsId] = sig
-	c.dnsProxy.dnsQueryMapMux.Unlock()
-
-	// set timeout for dns query
-	timeoutTimer := time.NewTimer(timeout)
-	select {
-	case dnsResponse := <-sig:
-		if dnsResponse == nil {
-			return nil, errors.New("dns sig channel close")
-		} else {
-			return dnsResponse, nil
-		}
-
-	case <-timeoutTimer.C:
-		// remove from map and recycle id after timeout triggered
-		c.dnsProxy.dnsQueryMapMux.Lock()
-		defer c.dnsProxy.dnsQueryMapMux.Unlock()
-		delete(c.dnsProxy.dnsQueryMap, dnsId)
-		c.dnsProxy.dnsIdQueue <- dnsId
-		return nil, errors.New(fmt.Sprintf("read dns from remote proxy timeout: %s, dnsID: %d", timeout.String(), dnsId))
-	}
+	return c.dnsSyncResolver.WaitResponse(dnsId, timeout)
+	//sig := make(chan *dns.Msg)
+	//c.dnsSyncResolver.dnsQueryMapMux.Lock()
+	//c.dnsSyncResolver.dnsQueryMap[dnsId] = sig
+	//c.dnsSyncResolver.dnsQueryMapMux.Unlock()
+	//
+	//// set timeout for dns query
+	//timeoutTimer := time.NewTimer(timeout)
+	//select {
+	//case dnsResponse := <-sig:
+	//	if dnsResponse == nil {
+	//		return nil, errors.New("dns sig channel close")
+	//	} else {
+	//		return dnsResponse, nil
+	//	}
+	//
+	//case <-timeoutTimer.C:
+	//	// remove from map and recycle id after timeout triggered
+	//	c.dnsSyncResolver.dnsQueryMapMux.Lock()
+	//	defer c.dnsSyncResolver.dnsQueryMapMux.Unlock()
+	//	delete(c.dnsSyncResolver.dnsQueryMap, dnsId)
+	//	c.dnsSyncResolver.dnsIdQueue <- dnsId
+	//	return nil, errors.New(fmt.Sprintf("read dns from remote proxy timeout: %s, dnsID: %d", timeout.String(), dnsId))
+	//}
 
 }

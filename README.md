@@ -1,94 +1,204 @@
 # RedFrog
 
-Based on [miekg/dns](https://github.com/miekg/dns)
-# build docker
-docker build -t water258/alpine-iptables -f ./docker/Dockerfile .
-docker push water258/alpine-iptables:latest
+Gateway level shadowsocks client/server for passing through firewall and censorship.
+____
 
-
+# 1.How to build
 ```bash
-
-### list nat rules
-sudo iptables -t nat -L --line-numbers
-
-### Tproxy Ruel
-
-sudo iptables -t mangle --flush
-sudo iptables -t mangle -X
-
-sudo iptables -t mangle -N DIVERT_TCP
-sudo iptables -t mangle -A DIVERT_TCP -j MARK --set-mark 0x1/0x1
-sudo iptables -t mangle -A DIVERT_TCP -j ACCEPT
-sudo iptables -t mangle -A PREROUTING -p tcp -m socket -j DIVERT_TCP
-
-sudo iptables -t mangle -A PREROUTING -p tcp -d 1.2.3.4 -j TPROXY --tproxy-mark 0x1/0x1 --on-port 9090
-
-
-sudo iptables -t mangle -A PREROUTING -p udp -d 1.2.3.4 -j TPROXY --tproxy-mark 0x1/0x1 --on-port 9090
-
-# add rule
-sudo ip rule add fwmark 0x1/0x1 lookup 100
-sudo ip route add local 0.0.0.0/0 dev lo table 100
-
-#show rules
-sudo ip rule show
-sudo ip route show table 100
-
-
-
- 
- # run test proxy server
-sudo ./tcprdr -4 -t -L 0.0.0.0 9090 127.0.0.1 9191 
+## clone repo
+git clone https://github.com/weishi258/redfrog-core
+## install dependency
+dep ensure -v 
+### build multiple x86 & arm based client & server
+./build.sh
 ```
 
+# 2. Deploy server
+1. upload build server binary (e.g redfrog-server) to remote server
 
-
-
-
+2. simple run the server with command
 ```bash
-
-# open tracing
-sudo iptables -t raw -A PREROUTING  -i enp0s8 -p tcp -s 192.168.0.10 -j TRACE 
-sudo tail -f /var/log/kern.log | grep 'TRACE:'
-
+./redfrog-server -c sample-server.yaml -log output.log
 ```
 
-```bash
-## list route
-sudo ip r|grep default
-
-## remove default gw
-sudo ip route del default via 192.168.0.1
-## adding default gateway
-sudo ip route add default via 192.168.0.1
-
+3. adding to linux systemd service  
+a. copy server binary to location <path/redfrog-server>  
+b. adding new service file to location `/etc/systemd/system/redfrogserver.service`
 
 ```
+[Unit]
+After=network.target
 
-```bash
+[Service]
+ExecStart=<path>/redfrog-server -c <path>/sample-server.yaml -log <path>/output.log
+ExecReload=/bin/kill -s HUP $MAINPID
+ExecStop=/bin/kill -s TERM $MAINPID
+Type=simple
+User=root
 
-#chagne from 0 to 1
-sudo nano /proc/sys/net/ipv4/ip_forward
-
-sudo nano /etc/sysctl.conf
-#remove for net.ipv4.ip_forward-1
-sudo sysctl -p /etc/sysctl.conf 
-
-sudo iptables --flush
-sudo iptables -t nat --flush
-sudo iptables --delete-chain
-
-
-# accept incoming connection if local initialed
-sudo iptables -A INPUT -i enp0s3 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-
-## forward from enp0s8 to enp0s3
-sudo iptables -A FORWARD -i enp0s8 -o enp0s3 -j ACCEPT
-# forward from enp0s3 to enp0s8 if enp0s8 initialed the conn
-sudo iptables -A FORWARD -i enp0s3 -o enp0s8 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-## MASQUERADE all connection for post routing
-sudo iptables -t nat -A POSTROUTING -o enp0s3 -j MASQUERADE
-
-sudo iptables -A INPUT -i enp0s8 -j ACCEPT
-
+[Install]
+WantedBy=default.target
 ```
+c. start service: `systemctl start redfrogserver`
+  
+d. enable service for auto start: `systemctl enable redfrogserver`
+
+# 3. Deploy client
+1. upload client binary to local gateway server
+  
+2. Simple run the client with command
+```bash
+<path>/redfrog-client -c <path>/prod-config.yaml -d <path>/redfrog -log <path>/output.log
+``` 
+
+3, Adding to linux systemd service
+a. adding new service file to location `/etc/systemd/system/redfrogserver.service`
+```
+[Unit]
+After=network.target
+
+[Service]
+ExecStart=<path>/redfrog-client-arm64 -c<path>/prod-config.yaml -d <path>/redfrog -log<path>/output.log
+ExecReload=/bin/kill -s HUP $MAINPID
+ExecStop=/bin/kill -s TERM $MAINPID
+Type=simple
+User=root
+
+[Install]
+WantedBy=default.target
+```
+b. start service: `systemctl start redfrog`  
+c. enable service: `systemctl enable redfrog`
+
+# 4. Server config explain
+this config start the proxy server to listen on two ports: 8420 and 8421 with kcptun support
+```yaml
+servers:
+  - listen-addr: "0.0.0.0:8420"
+    tcp-timeout: 120
+    udp-timeout: 60
+    crypt: "AEAD_CHACHA20_POLY1305"
+    Password: "MUST CHANGE THIS"
+    kcptun:
+      enable: true
+      listen-addr: "0.0.0.0:8420"
+      mode: "fast"
+      thread: 4
+      conn: 4
+      autoexpire: 0
+      mtu: 1350
+      sndwnd: 128
+      rcvwnd: 512
+      datashard: -1
+      parityshard: -1
+      dscp: 0
+      nocomp: false
+      keep-alive-interval: 10
+      keep-alive-timeout: 30
+      sock-buf : 4194304
+  - listen-addr: "0.0.0.0:8421"
+    tcp-timeout: 120
+    udp-timeout: 60
+    crypt: "AEAD_CHACHA20_POLY1305"
+    Password: "MUST CHANGE THIS"
+    kcptun:
+      enable: true
+      listen-addr: "0.0.0.0:8421"
+      mode: "fast"
+      thread: 4
+      conn: 4
+      autoexpire: 0
+      mtu: 1350
+      sndwnd: 128
+      rcvwnd: 512
+      datashard: -1
+      parityshard: -1
+      dscp: 0
+      nocomp: false
+      keep-alive-interval: 10
+      keep-alive-timeout: 30
+      sock-buf : 4194304
+```
+
+# 5. Client config explain
+it start the proxy client with dns filter on
+1. Add multiple pac lists to the tag `pac-list`
+2. Add multiple proxy connection (it will use round robin) to remote server with kcptun enabled
+3. Must change the password field for security reason
+```yaml
+packet-mask: "0x1/0x1"
+routing-table: 100
+listen-port: 9090
+ipset: true
+dns:
+  listen-addr: "192.168.0.2:53"
+  proxy-resolver:
+  - "127.0.0.11"
+  timeout: 5
+  cache: false
+  filter:
+    enable: true
+    white-list:
+    - "white.txt"
+    black-list:
+    - "black.txt"
+pac-list:
+  - "gfw-list.txt"
+  - "custom-list.txt"
+shadowsocks:
+  servers:
+  - enable: true
+    remote-server: "192.168.1.2:8420"
+    crypt: "AEAD_CHACHA20_POLY1305"
+    Password: "MUST CHANGE THIS"
+    tcp-timeout: 20
+    udp-timeout: 10
+    udp-over-tcp: true
+    kcptun:
+      enable: true
+      server: "192.168.1.2:8420"
+      mode: "fast"
+      thread: 1
+      conn: 1
+      autoexpire: 0
+      mtu: 1350
+      sndwnd: 128
+      rcvwnd: 512
+      datashard: -1
+      parityshard: -1
+      dscp: 0
+      nocomp: false
+      keep-alive-interval: 10
+      keep-alive-timeout: 30
+      sock-buf : 4194304
+  - enable: true
+    remote-server: "192.168.1.2:8421"
+    crypt: "AEAD_CHACHA20_POLY1305"
+    Password: "MUST CHANGE THIS"
+    tcp-timeout: 20
+    udp-timeout: 10
+    udp-over-tcp: true
+    kcptun:
+      enable: true
+      server: "192.168.1.2:8421"
+      mode: "fast"
+      thread: 1
+      conn: 1
+      autoexpire: 0
+      mtu: 1350
+      sndwnd: 128
+      rcvwnd: 512
+      datashard: -1
+      parityshard: -1
+      dscp: 0
+      nocomp: false
+      keep-alive-interval: 10
+      keep-alive-timeout: 30
+      sock-buf : 4194304
+```
+
+# 6. How to use it for local network devices
+The client is gateway level rule based proxy all you need to do is:
+1. config the local router to use the client device ip as the new gateway and DNS server
+2. config each device to use the client device as gateway and DNS server
+3. Must change the password field for security reason

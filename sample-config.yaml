@@ -20,15 +20,39 @@ pac-list:
 shadowsocks:
   servers:
   - enable: true
-    remote-server: "192.168.1.2:20000"
+    remote-server: "192.168.1.2:8420"
     crypt: "AEAD_CHACHA20_POLY1305"
-    Password: "123321A"
+    Password: "MUST CHANGE THIS"
     tcp-timeout: 20
     udp-timeout: 10
     udp-over-tcp: true
     kcptun:
       enable: true
-      server: "192.168.1.2:20010"
+      server: "192.168.1.2:8420"
+      mode: "fast"
+      thread: 1
+      conn: 1
+      autoexpire: 0
+      mtu: 1350
+      sndwnd: 128
+      rcvwnd: 512
+      datashard: -1
+      parityshard: -1
+      dscp: 0
+      nocomp: false
+      keep-alive-interval: 10
+      keep-alive-timeout: 30
+      sock-buf : 4194304
+  - enable: true
+    remote-server: "192.168.1.2:8421"
+    crypt: "AEAD_CHACHA20_POLY1305"
+    Password: "MUST CHANGE THIS"
+    tcp-timeout: 20
+    udp-timeout: 10
+    udp-over-tcp: true
+    kcptun:
+      enable: true
+      server: "192.168.1.2:8421"
       mode: "fast"
       thread: 1
       conn: 1

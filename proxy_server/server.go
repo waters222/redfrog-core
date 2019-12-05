@@ -17,6 +17,7 @@ import (
 var Version string
 var RevInfo string
 var BuildTime string
+
 const (
 	appName = "RedFrog Server"
 )
@@ -55,12 +56,12 @@ func main() {
 
 	// print version
 	if printVer {
-		if Version != ""{
+		if Version != "" {
 			logger.Info(appName,
 				zap.String("Version", Version),
 				zap.String("Rev", RevInfo),
 				zap.String("BuildTime", BuildTime))
-		}else{
+		} else {
 			logger.Info(appName,
 				zap.String("Rev", RevInfo),
 				zap.String("BuildTime", BuildTime))

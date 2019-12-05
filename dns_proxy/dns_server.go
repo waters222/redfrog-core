@@ -1,7 +1,7 @@
 package dns_proxy
 
 import (
-	"context"
+	"encoding/binary"
 	"fmt"
 	"github.com/miekg/dns"
 	"github.com/pkg/errors"
@@ -43,6 +43,10 @@ type DnsServer struct {
 
 	filter       *dnsFilter
 	dnsFilterMux sync.RWMutex
+
+	dnsSyncResolver common.DnsSyncResolver
+	localDnsConn    *net.UDPConn
+	localDnsMux     sync.Mutex
 }
 
 type dnsCacheEntry struct {
@@ -103,6 +107,7 @@ func StartDnsServer(dnsConfig config.DnsConfig, pacMgr *pac.PacListMgr, routingM
 	logger := log.GetLogger()
 
 	ret = &DnsServer{}
+	ret.dnsSyncResolver.Start()
 	ret.proxyClient = proxyClient
 	if routingMgr == nil {
 		return nil, errors.New("Routing manager is nil")
@@ -384,16 +389,66 @@ func (c *DnsServer) resolveProxyDNS(r *dns.Msg, domainName string, isBlock bool)
 }
 
 func (c *DnsServer) resolveLocalDNS(r *dns.Msg) (*dns.Msg, error) {
+	logger := log.GetLogger()
 	if resolver := c.getResolver(false); resolver != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
-		defer cancel()
-		if response, _, err := resolver.client.ExchangeContext(ctx, r, resolver.addr); err != nil {
-			if len(r.Question) > 0 {
-				return nil, errors.Wrapf(err, "Dns query for local resolver failed, domain: %s", r.Question[0].String())
-			} else {
-				return nil, errors.Wrap(err, "Dns query for local resolver failed")
+		addr, err := net.ResolveUDPAddr("udp", resolver.addr)
+		if err != nil {
+			return nil, err
+		}
+		payload, err := r.Pack()
+		if err != nil {
+			return nil, err
+		}
+
+		c.localDnsMux.Lock()
+		if c.localDnsConn == nil {
+			// connection is null, so lets create one
+			if c.localDnsConn, err = net.ListenUDP("udp", nil); err != nil {
+				c.localDnsMux.Unlock()
+				return nil, err
 			}
+			go func() {
+				defer func() {
+					c.localDnsMux.Lock()
+					c.localDnsConn.Close()
+					c.localDnsConn = nil
+					c.localDnsMux.Unlock()
+				}()
+				buffer := make([]byte, common.UDP_BUFFER_SIZE)
+				for {
+
+					n, _, err := c.localDnsConn.ReadFrom(buffer)
+					if err != nil {
+						// we don't log timeout error
+						if ee, ok := err.(net.Error); !ok || !ee.Timeout() {
+							logger.Error("DNS read from local failed", zap.String("error", err.Error()))
+							return
+						}
+					}
+					c.dnsSyncResolver.ProcessDnsResponse(logger, buffer[:n])
+					// restore buffer size
+					buffer = buffer[:cap(buffer)]
+				}
+			}()
+		}
+		oldId := r.Id
+		// swap id
+		dnsId := c.dnsSyncResolver.GetDnsId()
+		binary.BigEndian.PutUint16(payload, dnsId)
+
+		if _, err = c.localDnsConn.WriteTo(payload, addr); err != nil {
+			c.localDnsMux.Unlock()
+			// make sure id is recycled
+			c.dnsSyncResolver.PutDnsId(dnsId)
+			return nil, err
+		}
+		c.localDnsMux.Unlock()
+
+		if response, err := c.dnsSyncResolver.WaitResponse(dnsId, c.timeout); err != nil {
+			return nil, err
 		} else {
+			// switch to old id
+			response.Id = oldId
 			return response, nil
 		}
 	} else {
